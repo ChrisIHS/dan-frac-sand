@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dans Frac Sand – Delivered Cost Calculator</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
@@ -40,6 +42,7 @@
   .check{display:flex;align-items:center;gap:8px;font-weight:400;margin:0}
   .check input{width:auto}
   a{color:var(--accent)}
+  #map{height:380px;border-radius:8px;border:1px solid var(--line);margin-top:12px}
 </style>
 </head>
 <body>
@@ -87,7 +90,7 @@
     <div><label for="tonnes">Tonnes of sand</label><input id="tonnes" type="number" min="0" step="any" value="40"></div>
     <div><label for="sandPrice">Frac sand cost <small>($ / tonne)</small></label><input id="sandPrice" type="number" min="0" step="any" value="0"></div>
     <div><label for="loadSize">Tonnes per truck load</label><input id="loadSize" type="number" min="1" step="any" value="40"></div>
-    <div><label for="kmRate">Transportation <small>($ / km)</small></label><input id="kmRate" type="number" min="0" step="any" value="0"></div>
+    <div><label for="hrRate">Transportation <small>($ / hour, truck driving time)</small></label><input id="hrRate" type="number" min="0" step="any" value="0"></div>
     <div><label for="waitRate">Wait time cost <small>($ / hour)</small></label><input id="waitRate" type="number" min="0" step="any" value="0"></div>
     <div><label for="pickupH">Pick-up wait <small>(hours / load)</small></label><input id="pickupH" type="number" min="0" step="any" value="0"></div>
     <div><label for="deliveryH">Delivery wait <small>(hours / load)</small></label><input id="deliveryH" type="number" min="0" step="any" value="0"></div>
@@ -105,6 +108,7 @@
   <h2>3 · Result</h2>
   <div id="routeInfo" class="hint" style="margin-bottom:8px"></div>
   <table id="resTable"></table>
+  <div id="map"></div>
 </section>
 
 </main>
@@ -221,19 +225,19 @@ async function route(provider, a, b){
       origin:{lat:a.lat,lng:a.lon},destination:{lat:b.lat,lng:b.lon},travelMode:'DRIVING'
     },(r,st)=>{
       if(st!=='OK') return rej(new Error('Google could not find a driving route ('+st+')'));
-      const l=r.routes[0].legs[0]; res({km:l.distance.value/1000,hours:l.duration.value/3600});
+      const l=r.routes[0].legs[0]; res({km:l.distance.value/1000,hours:l.duration.value/3600,path:r.routes[0].overview_path.map(p=>[p.lat(),p.lng()])});
     }));
   }
   if(provider==='bing'){
-    const r = await fetch(`https://dev.virtualearth.net/REST/v1/Routes/Driving?wp.0=${a.lat},${a.lon}&wp.1=${b.lat},${b.lon}&distanceUnit=km&key=${$('bkey').value.trim()}`);
+    const r = await fetch(`https://dev.virtualearth.net/REST/v1/Routes/Driving?wp.0=${a.lat},${a.lon}&wp.1=${b.lat},${b.lon}&distanceUnit=km&routeAttributes=routePath&key=${$('bkey').value.trim()}`);
     const j = await r.json(); const x=j.resourceSets?.[0]?.resources?.[0];
     if(!x) throw new Error('Bing could not find a driving route.');
-    return {km:x.travelDistance,hours:x.travelDuration/3600};
+    return {km:x.travelDistance,hours:x.travelDuration/3600,path:x.routePath?.line?.coordinates};
   }
-  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`);
   const j = await r.json();
   if(j.code!=='Ok') throw new Error('OpenStreetMap could not find a driving route.');
-  return {km:j.routes[0].distance/1000,hours:j.routes[0].duration/3600};
+  return {km:j.routes[0].distance/1000,hours:j.routes[0].duration/3600,path:j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]])};
 }
 
 /* ---------- UI ---------- */
@@ -255,21 +259,39 @@ $('calc').onclick = async () => {
     const rt = await route(provider,a,b);
     const d = {
       date:new Date(), provider:provNames[provider], a, b,
-      km:rt.km, hours:rt.hours,
+      km:rt.km, hours:rt.hours, path:rt.path,
       tonnes:num('tonnes'), sandPrice:num('sandPrice'), loadSize:Math.max(num('loadSize'),0.0001),
-      kmRate:num('kmRate'), waitRate:num('waitRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
+      hrRate:num('hrRate'), waitRate:num('waitRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
       mult:$('roundTrip').checked?2:1
     };
     d.loads = Math.max(1,Math.ceil(d.tonnes/d.loadSize - 1e-9));
     d.billKm = d.km*d.mult*d.loads;
+    d.billHrs = d.hours*d.mult*d.loads;
     d.waitHrs = (d.pickupH+d.deliveryH)*d.loads;
-    d.sand = d.tonnes*d.sandPrice; d.trans = d.billKm*d.kmRate; d.wait = d.waitHrs*d.waitRate;
-    d.total = d.sand+d.trans+d.wait; d.perT = d.tonnes? d.total/d.tonnes : 0;
+    d.sand = d.tonnes*d.sandPrice; d.trans = d.billHrs*d.hrRate; d.wait = d.waitHrs*d.waitRate;
+    d.total = d.sand+d.trans+d.wait;
+    d.perKm = d.billKm? d.trans/d.billKm : 0; d.transPerT = d.tonnes? d.trans/d.tonnes : 0; d.waitPerT = d.tonnes? d.wait/d.tonnes : 0; d.sandPerT = d.sandPrice; d.perT = d.tonnes? d.total/d.tonnes : 0;
     last = d; render(d);
     $('status').className='msg'; $('xlsx').disabled=$('pdf').disabled=false;
   }catch(e){ showMsg(e.message||String(e),'err'); }
   $('calc').disabled=false;
 };
+
+let map, mapLayer;
+function drawMap(d){
+  if(typeof L==='undefined'){ $('map').style.display='none'; return; }
+  if(!map){
+    map = L.map('map');
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+  }
+  if(mapLayer) mapLayer.remove();
+  mapLayer = L.featureGroup().addTo(map);
+  const pts = (d.path&&d.path.length>1)? d.path : [[d.a.lat,d.a.lon],[d.b.lat,d.b.lon]];
+  L.polyline(pts,{color:'#c2410c',weight:5,opacity:.85,dashArray:(d.path&&d.path.length>1)?null:'8 8'}).addTo(mapLayer);
+  L.marker([d.a.lat,d.a.lon]).bindTooltip('Start',{permanent:true,direction:'top'}).addTo(mapLayer);
+  L.marker([d.b.lat,d.b.lon]).bindTooltip(`Destination – ${d.km.toFixed(1)} km`,{permanent:true,direction:'top'}).addTo(mapLayer);
+  setTimeout(()=>{ map.invalidateSize(); map.fitBounds(mapLayer.getBounds(),{padding:[40,40]}); },50);
+}
 
 function render(d){
   $('results').style.display='block';
@@ -277,12 +299,17 @@ function render(d){
     `${d.km.toFixed(1)} km one-way, about ${d.hours.toFixed(1)} h drive · via ${d.provider}`+
     (d.a.kind.includes('approx')||d.b.kind.includes('approx')?' · <i>UWI location is approximate – enter lat/long for an exact figure</i>':'');
   const r = (l,v,c='') => `<tr class="${c}"><td>${l}</td><td>${v}</td></tr>`;
+  drawMap(d);
   $('resTable').innerHTML =
     r(`Frac sand – ${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}/t`, money(d.sand)) +
-    r(`Transportation – ${d.billKm.toFixed(1)} km × ${money(d.kmRate)}/km`, money(d.trans)) +
+    r(`Transportation – ${d.billHrs.toFixed(2)} drive h × ${money(d.hrRate)}/h`, money(d.trans)) +
     r(`Wait time – ${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}/h`, money(d.wait)) +
     r('Total delivered cost', money(d.total),'total') +
     r('Delivered cost per tonne', money(d.perT),'sub') +
+    r(`&nbsp;&nbsp;Sand per tonne`, money(d.sandPerT),'sub') +
+    r(`&nbsp;&nbsp;Transportation per tonne`, money(d.transPerT),'sub') +
+    r(`&nbsp;&nbsp;Wait time per tonne`, money(d.waitPerT),'sub') +
+    r(`Effective transportation cost per km (${d.billKm.toFixed(1)} billable km)`, money(d.perKm)+' / km','sub') +
     r(`Loads: ${d.loads} (${d.loadSize} t/load)${d.mult===2?' · return trip billed':''}`, '','sub');
 }
 
@@ -307,7 +334,7 @@ $('xlsx').onclick = () => {
     ['Tonnes of sand', d.tonnes],
     ['Sand cost ($/tonne)', d.sandPrice],
     ['Tonnes per load', d.loadSize],
-    ['Transportation ($/km)', d.kmRate],
+    ['Transportation ($/hour of driving)', d.hrRate],
     ['Distance multiplier (1 = one-way, 2 = return billed)', d.mult],
     ['Pick-up wait (h/load)', d.pickupH],
     ['Delivery wait (h/load)', d.deliveryH],
@@ -316,6 +343,7 @@ $('xlsx').onclick = () => {
     ['CALCULATIONS'],
     ['Number of loads', d.loads],
     ['Billable km', d.billKm],
+    ['Billable driving hours', d.billHrs],
     ['Total wait hours', d.waitHrs],
     [],
     ['COSTS'],
@@ -323,21 +351,30 @@ $('xlsx').onclick = () => {
     ['Transportation', d.trans],
     ['Wait time', d.wait],
     ['TOTAL DELIVERED COST', d.total],
-    ['Delivered cost per tonne', d.perT]
+    ['Delivered cost per tonne', d.perT],
+    ['  Sand per tonne', d.sandPerT],
+    ['  Transportation per tonne', d.transPerT],
+    ['  Wait time per tonne', d.waitPerT],
+    ['Effective transportation cost ($/km)', d.perKm]
   ];
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const f = (cell, formula, v) => { ws[cell] = {t:'n', v, f:formula}; };
   f('B24','ROUNDUP(B14/B16,0)',d.loads);
   f('B25','B10*B18*B24',d.billKm);
-  f('B26','(B19+B20)*B24',d.waitHrs);
-  f('B29','B14*B15',d.sand);
-  f('B30','B25*B17',d.trans);
-  f('B31','B26*B21',d.wait);
-  f('B32','SUM(B29:B31)',d.total);
-  f('B33','IF(B14=0,0,B32/B14)',d.perT);
+  f('B26','B11*B18*B24',d.billHrs);
+  f('B27','(B19+B20)*B24',d.waitHrs);
+  f('B30','B14*B15',d.sand);
+  f('B31','B26*B17',d.trans);
+  f('B32','B27*B21',d.wait);
+  f('B33','SUM(B30:B32)',d.total);
+  f('B34','IF(B14=0,0,B33/B14)',d.perT);
+  f('B35','B15',d.sandPerT);
+  f('B36','IF(B14=0,0,B31/B14)',d.transPerT);
+  f('B37','IF(B14=0,0,B32/B14)',d.waitPerT);
+  f('B38','IF(B25=0,0,B31/B25)',d.perKm);
   ws['!cols'] = [{wch:52},{wch:60}];
   const money$ = '"$"#,##0.00';
-  [15,17,21,29,30,31,32,33].forEach(r => { if(ws['B'+r]) ws['B'+r].z = money$; });
+  [15,17,21,30,31,32,33,34,35,36,37,38].forEach(r => { if(ws['B'+r]) ws['B'+r].z = money$; });
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Quote');
   XLSX.writeFile(wb,`Frac_Sand_Quote_${stamp(d)}.xlsx`);
 };
@@ -356,16 +393,18 @@ $('pdf').onclick = () => {
   doc.autoTable({startY:doc.lastAutoTable.finalY+8,theme:'grid',headStyles:{fillColor:[28,36,48]},head:[['Inputs','']],body:[
     ['Tonnes of sand',d.tonnes.toLocaleString()],['Sand cost',money(d.sandPrice)+' / tonne'],
     ['Tonnes per load / loads',d.loadSize+' t  /  '+d.loads],
-    ['Transportation',money(d.kmRate)+' / km'+(d.mult===2?' (return trip billed)':'')],
+    ['Transportation',money(d.hrRate)+' / driving hour'+(d.mult===2?' (return trip billed)':'')],
     ['Pick-up wait',d.pickupH+' h / load'],['Delivery wait',d.deliveryH+' h / load'],
     ['Wait time cost',money(d.waitRate)+' / h']
   ],columnStyles:{0:{cellWidth:55,fontStyle:'bold'}}});
   doc.autoTable({startY:doc.lastAutoTable.finalY+8,theme:'grid',headStyles:{fillColor:[194,65,12]},head:[['Costs','','Amount']],body:[
     ['Frac sand',`${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}`,money(d.sand)],
-    ['Transportation',`${d.billKm.toFixed(1)} km × ${money(d.kmRate)}`,money(d.trans)],
+    ['Transportation',`${d.billHrs.toFixed(2)} h × ${money(d.hrRate)}`,money(d.trans)],
     ['Wait time',`${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}`,money(d.wait)],
     [{content:'TOTAL DELIVERED COST',colSpan:2,styles:{fontStyle:'bold'}},{content:money(d.total),styles:{fontStyle:'bold'}}],
-    [{content:'Delivered cost per tonne',colSpan:2},money(d.perT)]
+    [{content:'Delivered cost per tonne',colSpan:2},money(d.perT)],
+    [{content:'   Sand / transportation / wait per tonne',colSpan:2},`${money(d.sandPerT)} / ${money(d.transPerT)} / ${money(d.waitPerT)}`],
+    [{content:`Effective transportation cost per km (${d.billKm.toFixed(1)} billable km)`,colSpan:2},money(d.perKm)+' / km']
   ],columnStyles:{2:{halign:'right'}}});
   if(d.a.kind.includes('approx')||d.b.kind.includes('approx')){
     doc.setFontSize(9); doc.setTextColor(120);
