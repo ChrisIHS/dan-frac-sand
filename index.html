@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dans Frac Sand – Delivered Cost Calculator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--ink:#1c2430;--mute:#667085;--line:#dde1e7;--accent:#c2410c;--accent-d:#9a3412;--ok:#15803d}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:#1c2430;color:#fff;padding:18px 20px}
+  header h1{margin:0;font-size:20px} header p{margin:2px 0 0;color:#aab3c2;font-size:13px}
+  main{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+  h2{margin:0 0 12px;font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  label{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
+  label small{font-weight:400;color:var(--mute)}
+  input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff;color:var(--ink)}
+  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .hint{font-size:12px;color:var(--mute);margin-top:3px;min-height:16px}
+  .hint b{color:var(--ok)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;font-weight:600;padding:10px 16px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  button:hover{background:var(--accent-d)}
+  button.sec{background:#fff;color:var(--accent)} button.sec:hover{background:#fff4ee}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  table{width:100%;border-collapse:collapse}
+  td{padding:7px 4px;border-bottom:1px solid var(--line)}
+  td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+  tr.total td{font-weight:700;font-size:17px;border-top:2px solid var(--ink);border-bottom:none}
+  tr.sub td{color:var(--mute);font-size:13px}
+  .msg{padding:10px 12px;border-radius:6px;font-size:13px;display:none}
+  .msg.err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .msg.info{display:block;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
+  #keys{display:none;margin-top:12px}
+  .check{display:flex;align-items:center;gap:8px;font-weight:400;margin:0}
+  .check input{width:auto}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dans Frac Sand – Delivered Cost Calculator</h1>
+  <p>Sand + trucking + wait time, from pickup to wellsite</p>
+</header>
+<main>
+
+<section class="card">
+  <h2>1 · Route</h2>
+  <div class="grid">
+    <div>
+      <label for="origin">Start <small>(address or lat/long)</small></label>
+      <input id="origin" placeholder="e.g. 123 Main St, Grande Prairie, AB  or  55.17, -118.79">
+      <div class="hint" id="originHint"></div>
+    </div>
+    <div>
+      <label for="dest">Destination <small>(UWI, BC NTS well, lat/long or address)</small></label>
+      <input id="dest" placeholder="e.g. 100/04-12-045-05W5/00, 200/d-096-H/094-A-15/00 or 52.93, -114.60">
+      <div class="hint" id="destHint"></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div style="min-width:240px">
+      <label for="provider">Distance / geocoding provider</label>
+      <select id="provider">
+        <option value="google">Google Maps (API key)</option>
+        <option value="bing">Bing Maps (API key)</option>
+        <option value="osm">OpenStreetMap – free, no key (testing)</option>
+      </select>
+    </div>
+    <button class="sec" id="keyToggle" type="button" style="margin-top:20px">API keys…</button>
+  </div>
+  <div id="keys" class="grid">
+    <div><label for="gkey">Google Maps API key <small>(Maps JavaScript + Geocoding + Directions)</small></label><input id="gkey" type="password" autocomplete="off"></div>
+    <div><label for="bkey">Bing Maps key</label><input id="bkey" type="password" autocomplete="off"></div>
+    <div class="hint" style="grid-column:1/-1">Keys are stored only in this browser (localStorage) and sent only to Google / Bing.</div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>2 · Rates &amp; quantities</h2>
+  <div class="grid">
+    <div><label for="tonnes">Tonnes of sand</label><input id="tonnes" type="number" min="0" step="any" value="40"></div>
+    <div><label for="sandPrice">Frac sand cost <small>($ / tonne)</small></label><input id="sandPrice" type="number" min="0" step="any" value="0"></div>
+    <div><label for="loadSize">Tonnes per truck load</label><input id="loadSize" type="number" min="1" step="any" value="40"></div>
+    <div><label for="kmRate">Transportation <small>($ / km)</small></label><input id="kmRate" type="number" min="0" step="any" value="0"></div>
+    <div><label for="waitRate">Wait time cost <small>($ / hour)</small></label><input id="waitRate" type="number" min="0" step="any" value="0"></div>
+    <div><label for="pickupH">Pick-up wait <small>(hours / load)</small></label><input id="pickupH" type="number" min="0" step="any" value="0"></div>
+    <div><label for="deliveryH">Delivery wait <small>(hours / load)</small></label><input id="deliveryH" type="number" min="0" step="any" value="0"></div>
+    <div style="align-self:end"><label class="check"><input id="roundTrip" type="checkbox"> Bill return trip (distance × 2)</label></div>
+  </div>
+  <div class="row" style="margin-top:16px">
+    <button id="calc" type="button">Calculate</button>
+    <button class="sec" id="xlsx" type="button" disabled>Export Excel</button>
+    <button class="sec" id="pdf" type="button" disabled>Export PDF</button>
+  </div>
+  <div id="status" class="msg" style="margin-top:12px"></div>
+</section>
+
+<section class="card" id="results" style="display:none">
+  <h2>3 · Result</h2>
+  <div id="routeInfo" class="hint" style="margin-bottom:8px"></div>
+  <table id="resTable"></table>
+</section>
+
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const money = n => '$' + n.toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const num = id => Math.max(0, parseFloat($(id).value) || 0);
+let last = null;
+
+/* ---------- persisted settings ---------- */
+const store = {
+  get(k){ try{return localStorage.getItem(k)||''}catch(e){return ''} },
+  set(k,v){ try{localStorage.setItem(k,v)}catch(e){} }
+};
+['gkey','bkey','provider'].forEach(id => { const v = store.get('dfs_'+id); if(v) $(id).value = v; $(id).addEventListener('change',()=>store.set('dfs_'+id,$(id).value)); });
+$('keyToggle').onclick = () => { const k=$('keys'); k.style.display = k.style.display==='grid'?'none':'grid'; };
+
+/* ---------- input classification ---------- */
+const UWI_RE = /(?:\d[0-9A-Z]{1,2}\s*\/\s*)?(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,3})\s*-\s*(\d{1,2})\s*W\s*(\d)/i;
+const NTS_RE = /(?:\d[0-9A-Z]{1,2}\s*\/\s*)?\b([a-d])\s*-\s*(\d{1,3})\s*-\s*([A-L])\s*\/\s*(\d{2,3})\s*-\s*([A-P])\s*-\s*(\d{1,2})\b/;
+const LL_RE  = /^\s*(-?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+function classify(s){
+  s = s.trim();
+  if(!s) return {type:'empty'};
+  let m = s.match(LL_RE);
+  if(m){ let a=+m[1], b=+m[2]; if(Math.abs(a)<=90 && Math.abs(b)<=180) return {type:'latlon',lat:a,lon:b}; }
+  m = s.match(NTS_RE);   // case-sensitive: quarter unit lower case, block / sheet upper case
+  if(m){ const u=+m[2], sh=+m[6]; if(u>=1&&u<=100&&sh>=1&&sh<=16) return {type:'nts',q:m[1],unit:u,block:m[3],series:+m[4],sheet:m[5],area:sh}; }
+  m = s.match(UWI_RE);
+  if(m) return {type:'uwi',lsd:+m[1],sec:+m[2],twp:+m[3],rge:+m[4],mer:+m[5]};
+  return {type:'address',text:s};
+}
+
+/* Approximate Dominion Land Survey (Alberta / Sask / Man.) -> lat/long, centre of the LSD.
+   Good to roughly 1–3 km; use lat/long for exact surface locations. */
+function dlsToLatLon({lsd,sec,twp,rge,mer}){
+  if(lsd<1||lsd>16||sec<1||sec>36||twp<1||rge<1||mer<1||mer>6) throw new Error('UWI out of range');
+  const merLon = {1:-97.4578,2:-102,3:-106,4:-110,5:-114,6:-118}[mer];
+  const col = (n,perRow) => { const r=Math.floor((n-1)/perRow), c=(n-1)%perRow; return r%2===0? perRow-1-c : c; }; // 0 = west
+  const secRow = Math.floor((sec-1)/6), secCol = col(sec,6);
+  const lsdRow = Math.floor((lsd-1)/4), lsdCol = col(lsd,4);
+  const TWP_DEG = 0.0872;                       // ~9.69 km incl. road allowances
+  const southLat = 49 + (twp-1)*TWP_DEG;
+  const lat = southLat + TWP_DEG*((secRow + (lsdRow+0.5)/4)/6);
+  const kmPerRge = 9.69, kmWest = (rge-1)*kmPerRge + kmPerRge*((secCol + (lsdCol+0.5)/4)/6);
+  const lon = merLon - (kmWest) /(111.32*Math.cos(lat*Math.PI/180));
+  return {lat,lon};
+}
+
+/* BC (NTS-based) well location -> lat/long, centre of the quarter unit.
+   Layout per BC Reg. 321/93 / BC Energy Regulator: series 094 -> sheet A-P (1 deg x 2 deg) -> map area 1-16 (15' x 30')
+   -> block A-L (5' x 7.5') -> unit 1-100 (30" x 45") -> quarter unit a-d (15" x 22.5"). All counted from the south-east corner. */
+function ntsToLatLon({q,unit,block,series,sheet,area}){
+  const ser = series%100, colS = Math.floor(ser/10) , rowS = ser%10;   // e.g. 94 -> col 9, row 4
+  const colR = colS===0 ? Math.floor(series/10) : colS;
+  const eastW = 8*colR + 48, south = 40 + 4*rowS;                     // east edge (deg W) and south edge (deg N) of the series sheet
+  const bous = (i,per) => { const r=Math.floor(i/per), c=i%per; return {row:r, fromEast: r%2===0 ? c : per-1-c}; };
+  const sh = bous(sheet.charCodeAt(0)-65,4), ar = bous(area-1,4), bl = bous(block.charCodeAt(0)-65,4);
+  const un = {row:Math.floor((unit-1)/10), fromEast:(unit-1)%10};
+  const qm = {a:[0,0],b:[1,0],c:[1,1],d:[0,1]}[q];                    // [from east, from south] (a = SE, clockwise)
+  const latMin = south*60 + sh.row*60 + ar.row*15 + bl.row*5 + un.row*0.5 + qm[1]*0.25 + 0.125;
+  const wMin = eastW*60 + sh.fromEast*120 + ar.fromEast*30 + bl.fromEast*7.5 + un.fromEast*0.75 + qm[0]*0.375 + 0.1875;
+  return {lat:latMin/60, lon:-wMin/60};
+}
+
+/* ---------- providers ---------- */
+let gmapsPromise = null;
+function loadGoogle(key){
+  if(window.google && google.maps) return Promise.resolve();
+  if(gmapsPromise) return gmapsPromise;
+  gmapsPromise = new Promise((res,rej)=>{
+    window.__gmReady = () => res();
+    window.gm_authFailure = () => rej(new Error('Google rejected the API key (check key, billing and enabled APIs).'));
+    const s = document.createElement('script');
+    s.src = 'https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(key)+'&callback=__gmReady';
+    s.onerror = () => { gmapsPromise=null; rej(new Error('Could not load Google Maps.')); };
+    document.head.appendChild(s);
+  });
+  return gmapsPromise;
+}
+async function geocode(provider, text){
+  if(provider==='google'){
+    const key = $('gkey').value.trim(); if(!key) throw new Error('Enter a Google Maps API key (API keys… button).');
+    await loadGoogle(key);
+    return new Promise((res,rej)=> new google.maps.Geocoder().geocode({address:text},(r,st)=>{
+      if(st!=='OK') return rej(new Error('Google could not find "'+text+'" ('+st+')'));
+      const l=r[0].geometry.location; res({lat:l.lat(),lon:l.lng(),label:r[0].formatted_address});
+    }));
+  }
+  if(provider==='bing'){
+    const key = $('bkey').value.trim(); if(!key) throw new Error('Enter a Bing Maps key (API keys… button).');
+    const r = await fetch('https://dev.virtualearth.net/REST/v1/Locations?q='+encodeURIComponent(text)+'&key='+key);
+    const j = await r.json(); const x = j.resourceSets?.[0]?.resources?.[0];
+    if(!x) throw new Error('Bing could not find "'+text+'"');
+    return {lat:x.point.coordinates[0],lon:x.point.coordinates[1],label:x.name};
+  }
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(text));
+  const j = await r.json();
+  if(!j.length) throw new Error('OpenStreetMap could not find "'+text+'"');
+  return {lat:+j[0].lat,lon:+j[0].lon,label:j[0].display_name};
+}
+async function resolve(provider, raw){
+  const c = classify(raw);
+  if(c.type==='empty') throw new Error('Start and destination are both required.');
+  if(c.type==='latlon') return {lat:c.lat,lon:c.lon,label:c.lat.toFixed(5)+', '+c.lon.toFixed(5),kind:'Lat/long'};
+  if(c.type==='nts'){ const p=ntsToLatLon(c); return {...p,label:`BC well ${c.q}-${c.unit}-${c.block}/${String(c.series).padStart(3,'0')}-${c.sheet}-${c.area} (NTS location)`,kind:'BC NTS'}; }
+  if(c.type==='uwi'){ const p=dlsToLatLon(c); return {...p,label:'UWI '+raw.trim()+' (approx. DLS location)',kind:'UWI (approx.)'}; }
+  const g = await geocode(provider,c.text); return {...g,kind:'Address'};
+}
+async function route(provider, a, b){
+  if(provider==='google'){
+    await loadGoogle($('gkey').value.trim());
+    return new Promise((res,rej)=> new google.maps.DirectionsService().route({
+      origin:{lat:a.lat,lng:a.lon},destination:{lat:b.lat,lng:b.lon},travelMode:'DRIVING'
+    },(r,st)=>{
+      if(st!=='OK') return rej(new Error('Google could not find a driving route ('+st+')'));
+      const l=r.routes[0].legs[0]; res({km:l.distance.value/1000,hours:l.duration.value/3600});
+    }));
+  }
+  if(provider==='bing'){
+    const r = await fetch(`https://dev.virtualearth.net/REST/v1/Routes/Driving?wp.0=${a.lat},${a.lon}&wp.1=${b.lat},${b.lon}&distanceUnit=km&key=${$('bkey').value.trim()}`);
+    const j = await r.json(); const x=j.resourceSets?.[0]?.resources?.[0];
+    if(!x) throw new Error('Bing could not find a driving route.');
+    return {km:x.travelDistance,hours:x.travelDuration/3600};
+  }
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);
+  const j = await r.json();
+  if(j.code!=='Ok') throw new Error('OpenStreetMap could not find a driving route.');
+  return {km:j.routes[0].distance/1000,hours:j.routes[0].duration/3600};
+}
+
+/* ---------- UI ---------- */
+const provNames = {google:'Google Maps',bing:'Bing Maps',osm:'OpenStreetMap (OSRM)'};
+function showMsg(t,cls){ const s=$('status'); s.className='msg '+cls; s.textContent=t; }
+function hint(id){
+  const c = classify($(id).value);
+  const t = {empty:'',latlon:'Detected: lat/long',uwi:'Detected: Alberta/Sask/Man. UWI (location approximated from the land survey grid)',nts:'Detected: BC NTS well location (e.g. d-96-H/94-A-15)',address:'Detected: address'}[c.type];
+  $(id+'Hint').innerHTML = t? '<b>✓</b> '+t : '';
+}
+$('origin').addEventListener('input',()=>hint('origin'));
+$('dest').addEventListener('input',()=>hint('dest'));
+
+$('calc').onclick = async () => {
+  $('calc').disabled = true; showMsg('Looking up locations and driving distance…','info');
+  try{
+    const provider = $('provider').value;
+    const [a,b] = await Promise.all([resolve(provider,$('origin').value), resolve(provider,$('dest').value)]);
+    const rt = await route(provider,a,b);
+    const d = {
+      date:new Date(), provider:provNames[provider], a, b,
+      km:rt.km, hours:rt.hours,
+      tonnes:num('tonnes'), sandPrice:num('sandPrice'), loadSize:Math.max(num('loadSize'),0.0001),
+      kmRate:num('kmRate'), waitRate:num('waitRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
+      mult:$('roundTrip').checked?2:1
+    };
+    d.loads = Math.max(1,Math.ceil(d.tonnes/d.loadSize - 1e-9));
+    d.billKm = d.km*d.mult*d.loads;
+    d.waitHrs = (d.pickupH+d.deliveryH)*d.loads;
+    d.sand = d.tonnes*d.sandPrice; d.trans = d.billKm*d.kmRate; d.wait = d.waitHrs*d.waitRate;
+    d.total = d.sand+d.trans+d.wait; d.perT = d.tonnes? d.total/d.tonnes : 0;
+    last = d; render(d);
+    $('status').className='msg'; $('xlsx').disabled=$('pdf').disabled=false;
+  }catch(e){ showMsg(e.message||String(e),'err'); }
+  $('calc').disabled=false;
+};
+
+function render(d){
+  $('results').style.display='block';
+  $('routeInfo').innerHTML = `<b>${d.a.label}</b><br>→ <b>${d.b.label}</b><br>`+
+    `${d.km.toFixed(1)} km one-way, about ${d.hours.toFixed(1)} h drive · via ${d.provider}`+
+    (d.a.kind.includes('approx')||d.b.kind.includes('approx')?' · <i>UWI location is approximate – enter lat/long for an exact figure</i>':'');
+  const r = (l,v,c='') => `<tr class="${c}"><td>${l}</td><td>${v}</td></tr>`;
+  $('resTable').innerHTML =
+    r(`Frac sand – ${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}/t`, money(d.sand)) +
+    r(`Transportation – ${d.billKm.toFixed(1)} km × ${money(d.kmRate)}/km`, money(d.trans)) +
+    r(`Wait time – ${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}/h`, money(d.wait)) +
+    r('Total delivered cost', money(d.total),'total') +
+    r('Delivered cost per tonne', money(d.perT),'sub') +
+    r(`Loads: ${d.loads} (${d.loadSize} t/load)${d.mult===2?' · return trip billed':''}`, '','sub');
+}
+
+/* ---------- exports ---------- */
+const stamp = d => d.date.toISOString().slice(0,10);
+$('xlsx').onclick = () => {
+  const d = last; if(!d) return;
+  const rows = [
+    ['Dans Frac Sand – Delivered Cost Quote'],
+    ['Date', stamp(d)],
+    [],
+    ['ROUTE'],
+    ['Start', d.a.label],
+    ['Start coordinates', d.a.lat.toFixed(5)+', '+d.a.lon.toFixed(5)],
+    ['Destination', d.b.label],
+    ['Destination coordinates', d.b.lat.toFixed(5)+', '+d.b.lon.toFixed(5)],
+    ['Distance source', d.provider],
+    ['One-way driving distance (km)', +d.km.toFixed(2)],
+    ['Drive time one-way (h)', +d.hours.toFixed(2)],
+    [],
+    ['INPUTS'],
+    ['Tonnes of sand', d.tonnes],
+    ['Sand cost ($/tonne)', d.sandPrice],
+    ['Tonnes per load', d.loadSize],
+    ['Transportation ($/km)', d.kmRate],
+    ['Distance multiplier (1 = one-way, 2 = return billed)', d.mult],
+    ['Pick-up wait (h/load)', d.pickupH],
+    ['Delivery wait (h/load)', d.deliveryH],
+    ['Wait time cost ($/h)', d.waitRate],
+    [],
+    ['CALCULATIONS'],
+    ['Number of loads', d.loads],
+    ['Billable km', d.billKm],
+    ['Total wait hours', d.waitHrs],
+    [],
+    ['COSTS'],
+    ['Frac sand', d.sand],
+    ['Transportation', d.trans],
+    ['Wait time', d.wait],
+    ['TOTAL DELIVERED COST', d.total],
+    ['Delivered cost per tonne', d.perT]
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const f = (cell, formula, v) => { ws[cell] = {t:'n', v, f:formula}; };
+  f('B24','ROUNDUP(B14/B16,0)',d.loads);
+  f('B25','B10*B18*B24',d.billKm);
+  f('B26','(B19+B20)*B24',d.waitHrs);
+  f('B29','B14*B15',d.sand);
+  f('B30','B25*B17',d.trans);
+  f('B31','B26*B21',d.wait);
+  f('B32','SUM(B29:B31)',d.total);
+  f('B33','IF(B14=0,0,B32/B14)',d.perT);
+  ws['!cols'] = [{wch:52},{wch:60}];
+  const money$ = '"$"#,##0.00';
+  [15,17,21,29,30,31,32,33].forEach(r => { if(ws['B'+r]) ws['B'+r].z = money$; });
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Quote');
+  XLSX.writeFile(wb,`Frac_Sand_Quote_${stamp(d)}.xlsx`);
+};
+
+$('pdf').onclick = () => {
+  const d = last; if(!d) return;
+  const doc = new jspdf.jsPDF();
+  doc.setFontSize(18); doc.text('Dans Frac Sand',14,18);
+  doc.setFontSize(12); doc.setTextColor(100); doc.text('Delivered Cost Quote  ·  '+stamp(d),14,25); doc.setTextColor(0);
+  doc.autoTable({startY:32,theme:'grid',headStyles:{fillColor:[28,36,48]},head:[['Route','']],body:[
+    ['Start',d.a.label],['Destination',d.b.label],
+    ['Driving distance (one-way)',d.km.toFixed(1)+' km'],
+    ['Drive time (one-way)',d.hours.toFixed(1)+' h'],
+    ['Distance source',d.provider]
+  ],columnStyles:{0:{cellWidth:55,fontStyle:'bold'}}});
+  doc.autoTable({startY:doc.lastAutoTable.finalY+8,theme:'grid',headStyles:{fillColor:[28,36,48]},head:[['Inputs','']],body:[
+    ['Tonnes of sand',d.tonnes.toLocaleString()],['Sand cost',money(d.sandPrice)+' / tonne'],
+    ['Tonnes per load / loads',d.loadSize+' t  /  '+d.loads],
+    ['Transportation',money(d.kmRate)+' / km'+(d.mult===2?' (return trip billed)':'')],
+    ['Pick-up wait',d.pickupH+' h / load'],['Delivery wait',d.deliveryH+' h / load'],
+    ['Wait time cost',money(d.waitRate)+' / h']
+  ],columnStyles:{0:{cellWidth:55,fontStyle:'bold'}}});
+  doc.autoTable({startY:doc.lastAutoTable.finalY+8,theme:'grid',headStyles:{fillColor:[194,65,12]},head:[['Costs','','Amount']],body:[
+    ['Frac sand',`${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}`,money(d.sand)],
+    ['Transportation',`${d.billKm.toFixed(1)} km × ${money(d.kmRate)}`,money(d.trans)],
+    ['Wait time',`${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}`,money(d.wait)],
+    [{content:'TOTAL DELIVERED COST',colSpan:2,styles:{fontStyle:'bold'}},{content:money(d.total),styles:{fontStyle:'bold'}}],
+    [{content:'Delivered cost per tonne',colSpan:2},money(d.perT)]
+  ],columnStyles:{2:{halign:'right'}}});
+  if(d.a.kind.includes('approx')||d.b.kind.includes('approx')){
+    doc.setFontSize(9); doc.setTextColor(120);
+    doc.text('Note: UWI location is approximated from the land survey grid (about 1–3 km).',14,doc.lastAutoTable.finalY+8);
+  }
+  doc.save(`Frac_Sand_Quote_${stamp(d)}.pdf`);
+};
+</script>
+</body>
+</html>
