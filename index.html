@@ -98,6 +98,7 @@
     <div><label for="waitRate">Wait time cost <small>($ / hour)</small></label><input id="waitRate" type="number" min="0" step="any" value="0"></div>
     <div><label for="pickupH">Pick-up wait <small>(hours / load)</small></label><input id="pickupH" type="number" min="0" step="any" value="0"></div>
     <div><label for="deliveryH">Delivery wait <small>(hours / load)</small></label><input id="deliveryH" type="number" min="0" step="any" value="0"></div>
+    <div><label for="fsc">Fuel surcharge <small>(% of transportation, 0 = none)</small></label><input id="fsc" type="number" min="0" step="any" value="0"></div>
     <div style="align-self:end"><label class="check"><input id="roundTrip" type="checkbox"> Bill return trip (distance × 2)</label></div>
   </div>
   <div class="row" style="margin-top:16px">
@@ -287,7 +288,7 @@ $('calc').onclick = async () => {
       date:new Date(), provider:provNames[provider], a, b,
       km:rt.km, hours:rt.hours, path:rt.path, steps:(rt.steps||[]).filter(t=>t.text),
       tonnes:num('tonnes'), sandPrice:num('sandPrice'), loadSize:Math.max(num('loadSize'),0.0001),
-      hrRate:num('hrRate'), waitRate:num('waitRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
+      hrRate:num('hrRate'), fsc:num('fsc'), waitRate:num('waitRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
       mult:$('roundTrip').checked?2:1
     };
     d.loads = Math.max(1,Math.ceil(d.tonnes/d.loadSize - 1e-9));
@@ -295,8 +296,9 @@ $('calc').onclick = async () => {
     d.billHrs = d.hours*d.mult*d.loads;
     d.waitHrs = (d.pickupH+d.deliveryH)*d.loads;
     d.sand = d.tonnes*d.sandPrice; d.trans = d.billHrs*d.hrRate; d.wait = d.waitHrs*d.waitRate;
-    d.total = d.sand+d.trans+d.wait;
-    d.perKm = d.billKm? d.trans/d.billKm : 0; d.transPerT = d.tonnes? d.trans/d.tonnes : 0; d.waitPerT = d.tonnes? d.wait/d.tonnes : 0; d.sandPerT = d.sandPrice; d.perT = d.tonnes? d.total/d.tonnes : 0;
+    d.fuel = d.fsc>0 ? d.trans*d.fsc/100 : 0;
+    d.total = d.sand+d.trans+d.fuel+d.wait;
+    d.perKm = d.billKm? (d.trans+d.fuel)/d.billKm : 0; d.fuelPerT = d.tonnes? d.fuel/d.tonnes : 0; d.transPerT = d.tonnes? d.trans/d.tonnes : 0; d.waitPerT = d.tonnes? d.wait/d.tonnes : 0; d.sandPerT = d.sandPrice; d.perT = d.tonnes? d.total/d.tonnes : 0;
     last = d; render(d);
     $('status').className='msg'; $('xlsx').disabled=$('pdf').disabled=false;
   }catch(e){ showMsg(e.message||String(e),'err'); }
@@ -334,13 +336,15 @@ function render(d){
   $('resTable').innerHTML =
     r(`Frac sand – ${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}/t`, money(d.sand)) +
     r(`Transportation – ${d.billHrs.toFixed(2)} drive h × ${money(d.hrRate)}/h`, money(d.trans)) +
+    (d.fsc>0? r(`Fuel surcharge – ${d.fsc}% of transportation`, money(d.fuel)) : '') +
     r(`Wait time – ${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}/h`, money(d.wait)) +
     r('Total delivered cost', money(d.total),'total') +
     r('Delivered cost per tonne', money(d.perT),'sub') +
     r(`&nbsp;&nbsp;Sand per tonne`, money(d.sandPerT),'sub') +
     r(`&nbsp;&nbsp;Transportation per tonne`, money(d.transPerT),'sub') +
+    (d.fsc>0? r(`&nbsp;&nbsp;Fuel surcharge per tonne`, money(d.fuelPerT),'sub') : '') +
     r(`&nbsp;&nbsp;Wait time per tonne`, money(d.waitPerT),'sub') +
-    r(`Effective transportation cost per km (${d.billKm.toFixed(1)} billable km)`, money(d.perKm)+' / km','sub') +
+    r(`Effective transportation cost per km${d.fsc>0?' incl. fuel surcharge':''} (${d.billKm.toFixed(1)} billable km)`, money(d.perKm)+' / km','sub') +
     r(`Loads: ${d.loads} (${d.loadSize} t/load)${d.mult===2?' · return trip billed':''}`, '','sub');
 }
 
@@ -370,6 +374,7 @@ $('xlsx').onclick = () => {
     ['Pick-up wait (h/load)', d.pickupH],
     ['Delivery wait (h/load)', d.deliveryH],
     ['Wait time cost ($/h)', d.waitRate],
+    ['Fuel surcharge (% of transportation, 0 = none)', d.fsc],
     [],
     ['CALCULATIONS'],
     ['Number of loads', d.loads],
@@ -380,32 +385,36 @@ $('xlsx').onclick = () => {
     ['COSTS'],
     ['Frac sand', d.sand],
     ['Transportation', d.trans],
+    ['Fuel surcharge', d.fuel],
     ['Wait time', d.wait],
     ['TOTAL DELIVERED COST', d.total],
     ['Delivered cost per tonne', d.perT],
     ['  Sand per tonne', d.sandPerT],
     ['  Transportation per tonne', d.transPerT],
+    ['  Fuel surcharge per tonne', d.fuelPerT],
     ['  Wait time per tonne', d.waitPerT],
-    ['Effective transportation cost ($/km)', d.perKm]
+    ['Effective transportation cost incl. fuel surcharge ($/km)', d.perKm]
   ];
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const f = (cell, formula, v) => { ws[cell] = {t:'n', v, f:formula}; };
-  f('B24','ROUNDUP(B14/B16,0)',d.loads);
-  f('B25','B10*B18*B24',d.billKm);
-  f('B26','B11*B18*B24',d.billHrs);
-  f('B27','(B19+B20)*B24',d.waitHrs);
-  f('B30','B14*B15',d.sand);
-  f('B31','B26*B17',d.trans);
-  f('B32','B27*B21',d.wait);
-  f('B33','SUM(B30:B32)',d.total);
-  f('B34','IF(B14=0,0,B33/B14)',d.perT);
-  f('B35','B15',d.sandPerT);
-  f('B36','IF(B14=0,0,B31/B14)',d.transPerT);
-  f('B37','IF(B14=0,0,B32/B14)',d.waitPerT);
-  f('B38','IF(B25=0,0,B31/B25)',d.perKm);
-  ws['!cols'] = [{wch:52},{wch:60}];
+  f('B25','ROUNDUP(B14/B16,0)',d.loads);
+  f('B26','B10*B18*B25',d.billKm);
+  f('B27','B11*B18*B25',d.billHrs);
+  f('B28','(B19+B20)*B25',d.waitHrs);
+  f('B31','B14*B15',d.sand);
+  f('B32','B27*B17',d.trans);
+  f('B33','IF(B22>0,B32*B22/100,0)',d.fuel);
+  f('B34','B28*B21',d.wait);
+  f('B35','SUM(B31:B34)',d.total);
+  f('B36','IF(B14=0,0,B35/B14)',d.perT);
+  f('B37','B15',d.sandPerT);
+  f('B38','IF(B14=0,0,B32/B14)',d.transPerT);
+  f('B39','IF(B14=0,0,B33/B14)',d.fuelPerT);
+  f('B40','IF(B14=0,0,B34/B14)',d.waitPerT);
+  f('B41','IF(B26=0,0,(B32+B33)/B26)',d.perKm);
+  ws['!cols'] = [{wch:56},{wch:60}];
   const money$ = '"$"#,##0.00';
-  [15,17,21,30,31,32,33,34,35,36,37,38].forEach(r => { if(ws['B'+r]) ws['B'+r].z = money$; });
+  [15,17,21,31,32,33,34,35,36,37,38,39,40,41].forEach(r => { if(ws['B'+r]) ws['B'+r].z = money$; });
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Quote');
   if(d.steps.length){
     const rs = XLSX.utils.aoa_to_sheet([['Step','Instruction','Distance (km)'],...d.steps.map((t,i)=>[i+1,t.text,+t.km.toFixed(2)])]);
@@ -430,16 +439,18 @@ $('pdf').onclick = () => {
     ['Tonnes per load / loads',d.loadSize+' t  /  '+d.loads],
     ['Transportation',money(d.hrRate)+' / driving hour'+(d.mult===2?' (return trip billed)':'')],
     ['Pick-up wait',d.pickupH+' h / load'],['Delivery wait',d.deliveryH+' h / load'],
-    ['Wait time cost',money(d.waitRate)+' / h']
+    ['Wait time cost',money(d.waitRate)+' / h'],
+    ['Fuel surcharge',d.fsc>0? d.fsc+'% of transportation' : 'None']
   ],columnStyles:{0:{cellWidth:55,fontStyle:'bold'}}});
   doc.autoTable({startY:doc.lastAutoTable.finalY+8,theme:'grid',headStyles:{fillColor:[194,65,12]},head:[['Costs','','Amount']],body:[
     ['Frac sand',`${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}`,money(d.sand)],
     ['Transportation',`${d.billHrs.toFixed(2)} h × ${money(d.hrRate)}`,money(d.trans)],
+    ...(d.fsc>0? [['Fuel surcharge',`${d.fsc}% × ${money(d.trans)}`,money(d.fuel)]] : []),
     ['Wait time',`${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}`,money(d.wait)],
     [{content:'TOTAL DELIVERED COST',colSpan:2,styles:{fontStyle:'bold'}},{content:money(d.total),styles:{fontStyle:'bold'}}],
     [{content:'Delivered cost per tonne',colSpan:2},money(d.perT)],
-    [{content:'   Sand / transportation / wait per tonne',colSpan:2},`${money(d.sandPerT)} / ${money(d.transPerT)} / ${money(d.waitPerT)}`],
-    [{content:`Effective transportation cost per km (${d.billKm.toFixed(1)} billable km)`,colSpan:2},money(d.perKm)+' / km']
+    [{content:'   Sand / transportation / wait per tonne',colSpan:2},d.fsc>0? `${money(d.sandPerT)} / ${money(d.transPerT)} / ${money(d.fuelPerT)} fuel / ${money(d.waitPerT)}` : `${money(d.sandPerT)} / ${money(d.transPerT)} / ${money(d.waitPerT)}`],
+    [{content:`Effective transportation cost per km${d.fsc>0?' incl. fuel surcharge':''} (${d.billKm.toFixed(1)} billable km)`,colSpan:2},money(d.perKm)+' / km']
   ],columnStyles:{2:{halign:'right'}}});
   if(d.a.kind.includes('approx')||d.b.kind.includes('approx')){
     doc.setFontSize(9); doc.setTextColor(120);
