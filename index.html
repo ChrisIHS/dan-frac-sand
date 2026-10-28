@@ -42,6 +42,10 @@
   .check{display:flex;align-items:center;gap:8px;font-weight:400;margin:0}
   .check input{width:auto}
   a{color:var(--accent)}
+  #dirList li{display:flex;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line);font-size:14px}
+  #dirList .n{color:var(--mute);min-width:28px;text-align:right}
+  #dirList .t{flex:1}
+  #dirList .d{color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums}
   #map{height:380px;border-radius:8px;border:1px solid var(--line);margin-top:12px}
 </style>
 </head>
@@ -109,6 +113,7 @@
   <div id="routeInfo" class="hint" style="margin-bottom:8px"></div>
   <table id="resTable"></table>
   <div id="map"></div>
+  <details id="dirs" open style="margin-top:14px"><summary style="cursor:pointer;font-weight:600">Driving route <span id="dirsCount" class="hint" style="display:inline"></span></summary><ol id="dirList" style="margin:8px 0 0;padding-left:0;list-style:none"></ol></details>
 </section>
 
 </main>
@@ -218,6 +223,24 @@ async function resolve(provider, raw){
   if(c.type==='uwi'){ const p=dlsToLatLon(c); return {...p,label:'UWI '+raw.trim()+' (approx. DLS location)',kind:'UWI (approx.)'}; }
   const g = await geocode(provider,c.text); return {...g,kind:'Address'};
 }
+function osrmStep(st){
+  const m=st.maneuver, mod=m.modifier||'', road=[st.name,st.ref].filter(Boolean).join(' / '), on=road?` onto ${road}`:'', cap=w=>w.charAt(0).toUpperCase()+w.slice(1);
+  let t;
+  switch(m.type){
+    case 'depart': t=`Head ${mod||''}${road?' on '+road:''}`.replace('  ',' '); break;
+    case 'arrive': t='Arrive at destination'+(mod?` (on the ${mod})`:''); break;
+    case 'turn': case 'end of road': t=(mod==='straight'?'Continue straight':`Turn ${mod}`)+on; break;
+    case 'new name': t='Continue'+on; break;
+    case 'continue': t=(mod&&mod!=='straight'?`Continue ${mod}`:'Continue')+on; break;
+    case 'merge': t='Merge'+(mod?` ${mod}`:'')+on; break;
+    case 'on ramp': t='Take the ramp'+(mod?` ${mod}`:'')+on; break;
+    case 'off ramp': t='Take the exit'+(mod?` ${mod}`:'')+on; break;
+    case 'fork': t=`Keep ${mod||'straight'} at the fork`+on; break;
+    case 'roundabout': case 'rotary': t=`At the roundabout, take exit ${m.exit||''}`.trim()+on; break;
+    default: t=(mod?`Go ${mod}`:'Continue')+on;
+  }
+  return {text:t.trim(),km:st.distance/1000};
+}
 async function route(provider, a, b){
   if(provider==='google'){
     await loadGoogle($('gkey').value.trim());
@@ -225,19 +248,22 @@ async function route(provider, a, b){
       origin:{lat:a.lat,lng:a.lon},destination:{lat:b.lat,lng:b.lon},travelMode:'DRIVING'
     },(r,st)=>{
       if(st!=='OK') return rej(new Error('Google could not find a driving route ('+st+')'));
-      const l=r.routes[0].legs[0]; res({km:l.distance.value/1000,hours:l.duration.value/3600,path:r.routes[0].overview_path.map(p=>[p.lat(),p.lng()])});
+      const l=r.routes[0].legs[0]; res({km:l.distance.value/1000,hours:l.duration.value/3600,path:r.routes[0].overview_path.map(p=>[p.lat(),p.lng()]),
+        steps:l.steps.map(t=>({text:t.instructions.replace(/<div[^>]*>/g,'. ').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim(),km:t.distance.value/1000}))});
     }));
   }
   if(provider==='bing'){
     const r = await fetch(`https://dev.virtualearth.net/REST/v1/Routes/Driving?wp.0=${a.lat},${a.lon}&wp.1=${b.lat},${b.lon}&distanceUnit=km&routeAttributes=routePath&key=${$('bkey').value.trim()}`);
     const j = await r.json(); const x=j.resourceSets?.[0]?.resources?.[0];
     if(!x) throw new Error('Bing could not find a driving route.');
-    return {km:x.travelDistance,hours:x.travelDuration/3600,path:x.routePath?.line?.coordinates};
+    return {km:x.travelDistance,hours:x.travelDuration/3600,path:x.routePath?.line?.coordinates,
+      steps:(x.routeLegs?.[0]?.itineraryItems||[]).map(i=>({text:i.instruction?.text||'',km:i.travelDistance||0}))};
   }
-  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`);
+  const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson&steps=true`);
   const j = await r.json();
   if(j.code!=='Ok') throw new Error('OpenStreetMap could not find a driving route.');
-  return {km:j.routes[0].distance/1000,hours:j.routes[0].duration/3600,path:j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]])};
+  return {km:j.routes[0].distance/1000,hours:j.routes[0].duration/3600,path:j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]),
+    steps:j.routes[0].legs.flatMap(l=>l.steps).map(osrmStep)};
 }
 
 /* ---------- UI ---------- */
@@ -259,7 +285,7 @@ $('calc').onclick = async () => {
     const rt = await route(provider,a,b);
     const d = {
       date:new Date(), provider:provNames[provider], a, b,
-      km:rt.km, hours:rt.hours, path:rt.path,
+      km:rt.km, hours:rt.hours, path:rt.path, steps:(rt.steps||[]).filter(t=>t.text),
       tonnes:num('tonnes'), sandPrice:num('sandPrice'), loadSize:Math.max(num('loadSize'),0.0001),
       hrRate:num('hrRate'), waitRate:num('waitRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
       mult:$('roundTrip').checked?2:1
@@ -300,6 +326,11 @@ function render(d){
     (d.a.kind.includes('approx')||d.b.kind.includes('approx')?' · <i>UWI location is approximate – enter lat/long for an exact figure</i>':'');
   const r = (l,v,c='') => `<tr class="${c}"><td>${l}</td><td>${v}</td></tr>`;
   drawMap(d);
+  const fmt = k => k>=1? k.toFixed(1)+' km' : Math.round(k*1000)+' m';
+  const esc = t => t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  $('dirs').style.display = d.steps.length? '' : 'none';
+  $('dirsCount').textContent = d.steps.length? `(${d.steps.length} steps, ${d.km.toFixed(1)} km)` : '';
+  $('dirList').innerHTML = d.steps.map((t,i)=>`<li><span class="n">${i+1}.</span><span class="t">${esc(t.text)}</span><span class="d">${fmt(t.km)}</span></li>`).join('');
   $('resTable').innerHTML =
     r(`Frac sand – ${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}/t`, money(d.sand)) +
     r(`Transportation – ${d.billHrs.toFixed(2)} drive h × ${money(d.hrRate)}/h`, money(d.trans)) +
@@ -376,6 +407,10 @@ $('xlsx').onclick = () => {
   const money$ = '"$"#,##0.00';
   [15,17,21,30,31,32,33,34,35,36,37,38].forEach(r => { if(ws['B'+r]) ws['B'+r].z = money$; });
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Quote');
+  if(d.steps.length){
+    const rs = XLSX.utils.aoa_to_sheet([['Step','Instruction','Distance (km)'],...d.steps.map((t,i)=>[i+1,t.text,+t.km.toFixed(2)])]);
+    rs['!cols']=[{wch:6},{wch:80},{wch:14}]; XLSX.utils.book_append_sheet(wb,rs,'Driving route');
+  }
   XLSX.writeFile(wb,`Frac_Sand_Quote_${stamp(d)}.xlsx`);
 };
 
@@ -409,6 +444,12 @@ $('pdf').onclick = () => {
   if(d.a.kind.includes('approx')||d.b.kind.includes('approx')){
     doc.setFontSize(9); doc.setTextColor(120);
     doc.text('Note: UWI location is approximated from the land survey grid (about 1–3 km).',14,doc.lastAutoTable.finalY+8);
+  }
+  if(d.steps.length){
+    doc.addPage(); doc.setFontSize(14); doc.text('Driving route',14,18);
+    doc.autoTable({startY:24,theme:'striped',headStyles:{fillColor:[28,36,48]},styles:{fontSize:9},head:[['#','Instruction','Distance']],
+      body:d.steps.map((t,i)=>[i+1,t.text,t.km>=1?t.km.toFixed(1)+' km':Math.round(t.km*1000)+' m']),
+      columnStyles:{0:{cellWidth:10},2:{cellWidth:25,halign:'right'}}});
   }
   doc.save(`Frac_Sand_Quote_${stamp(d)}.pdf`);
 };
