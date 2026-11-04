@@ -67,6 +67,12 @@
   table.sa td.lbl{width:38%} table.sa td.val{width:31%}
   table.sa input{text-align:center;padding:6px 8px}
   table.sa tr.gap td{padding:6px}
+  h2.chead{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+  .tog{background:none;border:none;color:var(--mute);font-size:18px;line-height:1;padding:2px 8px;border-radius:6px;transition:transform .15s}
+  .tog:hover{background:var(--bg);color:var(--ink)}
+  section.collapsed .tog{transform:rotate(-90deg)}
+  section.collapsed > h2.chead{margin-bottom:0}
+  section.collapsed > .cbody{display:none}
   #map{height:380px;border-radius:8px;border:1px solid var(--line);margin-top:12px}
 </style>
 </head>
@@ -852,6 +858,20 @@ async function buildPdf(){
     try{ (await buildPdf()).save(fname('pdf')); cdMsg('PDF created.','info'); }catch(e){ cdMsg(e.message||String(e),'err'); }
   };
 })();
+
+/* ---------- collapsible sections ---------- */
+document.querySelectorAll('main > section.card').forEach(sec => {
+  const h = sec.querySelector('h2'), body = document.createElement('div'), btn = document.createElement('button');
+  body.className = 'cbody'; while(h.nextSibling) body.appendChild(h.nextSibling); sec.appendChild(body);
+  btn.type = 'button'; btn.className = 'tog'; btn.textContent = '▾'; btn.setAttribute('aria-expanded','true');
+  btn.setAttribute('aria-label','Minimize or expand this section'); btn.title = 'Minimize / expand';
+  h.classList.add('chead'); h.appendChild(btn);
+  h.addEventListener('click', () => {
+    const closed = sec.classList.toggle('collapsed');
+    btn.setAttribute('aria-expanded', String(!closed));
+    if(!closed && map) setTimeout(() => map.invalidateSize(), 50);   // keep the route map sized after re-opening
+  });
+});
 </script>
 </body>
 </html>
