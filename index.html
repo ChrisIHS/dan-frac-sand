@@ -6,6 +6,7 @@
 <title>Dans Frac Sand – Delivered Cost Calculator</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
@@ -21,8 +22,9 @@
   .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
   label{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
   label small{font-weight:400;color:var(--mute)}
-  input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff;color:var(--ink)}
-  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff;color:var(--ink)}
+  textarea{resize:vertical}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
   .hint{font-size:12px;color:var(--mute);margin-top:3px;min-height:16px}
   .hint b{color:var(--ok)}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -52,6 +54,10 @@
   table.qt tr.sec td{background:var(--bg);font-weight:600;color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
   table.qt small{color:var(--mute)}
   table.rev td{font-size:13px} table.rev td:first-child{color:var(--mute)}
+  #cdLetter{margin-top:10px;padding:28px 32px;background:#fff;border:1px solid var(--line);border-radius:6px;font:15px/1.4 "Times New Roman",Times,serif;max-width:760px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  #cdLetter p{margin:0} #cdLetter .li{display:flex;gap:8px} #cdLetter .lb{min-width:22px;text-align:right}
+  #cdLetter img{max-width:100%;display:block;margin:6px 0}
+  #cdLetter .note{color:var(--mute);font-style:italic;font-size:13px}
   #map{height:380px;border-radius:8px;border:1px solid var(--line);margin-top:12px}
 </style>
 </head>
@@ -167,6 +173,24 @@
   <table id="resTable"></table>
   <div id="map"></div>
   <details id="dirs" open style="margin-top:14px"><summary style="cursor:pointer;font-weight:600">Driving route <span id="dirsCount" class="hint" style="display:inline"></span></summary><ol id="dirList" style="margin:8px 0 0;padding-left:0;list-style:none"></ol></details>
+</section>
+
+<section class="card" id="clientDocCard">
+  <h2>Client Documentation</h2>
+  <div class="grid">
+    <div><label for="cdCompany">Company</label><input id="cdCompany" placeholder="e.g. Kiwetinohk Energy Corp."></div>
+    <div><label for="cdContact">Contact <small>(full name)</small></label><input id="cdContact" placeholder="e.g. Jane Smith"></div>
+    <div><label for="cdDate">Date</label><input id="cdDate" type="date"></div>
+  </div>
+  <div style="margin-top:12px"><label for="cdAddress">Address <small>(one line per row)</small></label><textarea id="cdAddress" rows="3" placeholder="Street&#10;City, Province  Postal code"></textarea></div>
+  <label class="check" style="margin-top:12px"><input id="cdKec" type="checkbox"> Include the Kiwetinohk (KEC)-specific content: route/rate tables, Sangudo note and ESG appendix</label>
+  <div class="hint">Company fills "Company Name" and each "Company" in the letter; Contact fills "Full Name" and, by its first word, "First Name".</div>
+  <div class="row" style="margin-top:14px">
+    <button id="cdWord" type="button">Download Word</button>
+    <button class="sec" id="cdPdf" type="button">Download PDF</button>
+  </div>
+  <div id="cdStatus" class="msg" style="margin-top:12px"></div>
+  <details id="cdPreview" style="margin-top:14px"><summary style="cursor:pointer;font-weight:600">Preview letter</summary><div id="cdLetter"></div></details>
 </section>
 
 </main>
@@ -603,6 +627,186 @@ $('pdf').onclick = () => {
   }
   doc.save(`Frac_Sand_Quote_${stamp(d)}.pdf`);
 };
+
+/* ---------- Client Documentation: letter built from the KEC proposal template ---------- */
+const NS = {w:'http://schemas.openxmlformats.org/wordprocessingml/2006/main', r:'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+            a:'http://schemas.openxmlformats.org/drawingml/2006/main', wp:'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'};
+let tpl = null; const mediaCache = {};
+async function loadTemplate(){
+  if(tpl) return tpl;
+  let r; try{ r = await fetch('letter-template.docx'); }catch(e){ r = null; }
+  if(!r || !r.ok) throw new Error('Could not load the letter template. Open the calculator from its website address (not as a local file).');
+  const zip = await JSZip.loadAsync(await r.arrayBuffer());
+  tpl = {zip, xml:await zip.file('word/document.xml').async('string'), rels:await zip.file('word/_rels/document.xml.rels').async('string'), hrels:await zip.file('word/_rels/header1.xml.rels').async('string')};
+  return tpl;
+}
+async function mediaFromTarget(target){                      // null for formats a browser/PDF can't draw (EMF)
+  if(target in mediaCache) return mediaCache[target];
+  const t = await loadTemplate(), ext = target.split('.').pop().toLowerCase(); let out = null;
+  if(ext==='png' || ext==='jpg' || ext==='jpeg'){
+    const fmt = ext==='png'? 'PNG' : 'JPEG';
+    out = {fmt, dataUrl:`data:image/${fmt==='PNG'?'png':'jpeg'};base64,` + await t.zip.file('word/'+target).async('base64')};
+  }
+  return mediaCache[target] = out;
+}
+async function mediaByRid(rid){
+  const t = await loadTemplate(), m = t.rels.match(new RegExp('Id="'+rid+'"[^>]*Target="([^"]+)"'));
+  return m? mediaFromTarget(m[1]) : null;
+}
+const wEls = (el,name) => [...el.getElementsByTagNameNS(NS.w,name)];
+const wAttr = (el,name) => el.getAttributeNS(NS.w,name);
+const runText = r => [...r.childNodes].map(n => n.localName==='t'? n.textContent : n.localName==='tab'? '    ' :
+  (n.localName==='br' && wAttr(n,'type')!=='page')? '\n' : '').join('');
+const paraText = p => wEls(p,'r').map(runText).join('');
+function setRunText(run,text){
+  const doc = run.ownerDocument;
+  [...run.childNodes].filter(n => ['t','br','tab'].includes(n.localName)).forEach(n => run.removeChild(n));
+  String(text).split(/\r?\n/).forEach((ln,i) => {
+    if(i) run.appendChild(doc.createElementNS(NS.w,'w:br'));
+    const t = doc.createElementNS(NS.w,'w:t'); t.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:space','preserve'); t.textContent = ln; run.appendChild(t);
+  });
+}
+function cdValues(){
+  const contact = $('cdContact').value.trim(), dv = $('cdDate').value;
+  const company = $('cdCompany').value.trim();
+  return {company, companyInSentence:company.replace(/\.$/,''), address:$('cdAddress').value.trim(), contact, first:contact.split(/\s+/)[0]||'',
+    date: dv? new Date(dv+'T12:00:00').toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'}) : ''};
+}
+async function buildLetter(){
+  const t = await loadTemplate(), v = cdValues();
+  const dom = new DOMParser().parseFromString(t.xml,'application/xml');
+  const body = dom.getElementsByTagNameNS(NS.w,'body')[0];
+  let paras = [...body.childNodes].filter(n => n.localName==='p');
+  const fill = (p,token,val) => { if(val) wEls(p,'r').filter(r => runText(r)===token).forEach(r => setRunText(r,val)); };
+  paras.forEach(p => {                                       // fill the template's placeholders
+    const tx = paraText(p);
+    if(tx==='Date') fill(p,'Date',v.date);
+    else if(tx==='Company Name') fill(p,'Company Name',v.company);
+    else if(tx==='Address') fill(p,'Address',v.address);
+    else if(tx.startsWith('Attention: ')) fill(p,'Full Name',v.contact);
+    else if(tx.startsWith('Hello ')){ fill(p,'First Name',v.first); fill(p,'Company',v.companyInSentence); }
+    else if(tx.startsWith('Raven Silica will provide')) fill(p,'Company',v.companyInSentence);
+  });
+  if(!$('cdKec').checked){                                   // drop the Kiwetinohk-only content
+    let cut = false;
+    paras.forEach(p => {
+      const tx = paraText(p), ids = [...p.getElementsByTagNameNS(NS.a,'blip')].map(b => b.getAttributeNS(NS.r,'embed'));
+      if(tx==='Appendices') cut = true;
+      if(cut || tx.startsWith('*Sangudo') || ids.includes('rId9') || ids.includes('rId10')) body.removeChild(p);
+    });
+    paras = paras.filter(p => p.parentNode===body);
+  }
+  const counters = {}, model = [];
+  for(const p of paras){
+    const ppr = p.getElementsByTagNameNS(NS.w,'pPr')[0], numPr = ppr && ppr.getElementsByTagNameNS(NS.w,'numPr')[0];
+    let label = null, lvl = 0;
+    if(numPr){
+      const id = wAttr(numPr.getElementsByTagNameNS(NS.w,'numId')[0],'val'), il = numPr.getElementsByTagNameNS(NS.w,'ilvl')[0];
+      lvl = il? +wAttr(il,'val') : 0;
+      const c = counters[id] || (counters[id] = [0,0]); c[lvl]++; if(lvl===0) c[1] = 0;
+      label = (lvl===1 || id==='3')? String.fromCharCode(96+c[lvl])+'.' : c[lvl]+'.';
+    }
+    const sp = ppr && ppr.getElementsByTagNameNS(NS.w,'spacing')[0], aft = sp && wAttr(sp,'after');
+    const exts = [...p.getElementsByTagNameNS(NS.wp,'extent')];
+    const images = [...p.getElementsByTagNameNS(NS.a,'blip')].map((b,i) => ({rid:b.getAttributeNS(NS.r,'embed'), cx:+exts[i].getAttribute('cx'), cy:+exts[i].getAttribute('cy')}));
+    const runs = wEls(p,'r').map(r => {
+      const rp = r.getElementsByTagNameNS(NS.w,'rPr')[0], on = n => { const e = rp && rp.getElementsByTagNameNS(NS.w,n)[0]; return !!e && !['0','false'].includes(wAttr(e,'val')); };
+      return {text:runText(r), b:on('b'), i:on('i')};
+    }).filter(r => r.text!=='');
+    model.push({runs, images, label, lvl, after:aft? +aft/20 : 8, pageBreak:wEls(p,'br').some(b => wAttr(b,'type')==='page')});
+  }
+  return {dom, model};
+}
+const esc2 = t => t.replace(/[&<>]/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+async function renderPreview(){
+  const {model} = await buildLetter(), t = await loadTemplate();
+  const logo = await mediaFromTarget(t.hrels.match(/Target="([^"]+)"/)[1]);
+  let html = logo? `<img src="${logo.dataUrl}" style="height:54px;margin:0 0 14px">` : '';
+  for(const m of model){
+    const txt = m.runs.map(r => { let h = esc2(r.text).replace(/\n/g,'<br>'); if(r.b) h = '<b>'+h+'</b>'; if(r.i) h = '<i>'+h+'</i>'; return h; }).join('');
+    const mt = `margin-bottom:${m.after}px`;
+    if(m.label) html += `<div class="li" style="margin-left:${m.lvl*22+4}px;${mt}"><span class="lb">${m.label}</span><span>${txt}</span></div>`;
+    else if(txt) html += `<p style="${mt}">${txt}</p>`;
+    else if(!m.images.length) html += '<p>&nbsp;</p>';
+    for(const im of m.images){
+      const md = await mediaByRid(im.rid);
+      html += md? `<img src="${md.dataUrl}" style="width:${Math.min(im.cx/12700*1.333,700)}px">` : '<p class="note">[Table image – shown in the Word version only]</p>';
+    }
+  }
+  $('cdLetter').innerHTML = html;
+}
+async function buildPdf(){
+  const {model} = await buildLetter(), t = await loadTemplate();
+  const logo = await mediaFromTarget(t.hrels.match(/Target="([^"]+)"/)[1]);
+  const doc = new jspdf.jsPDF({unit:'pt',format:'letter'});
+  const L = 72, R = 540, TOP = 100, BOT = 720, FS = 12, LH = 14.5;
+  let y = TOP;
+  const header = () => { if(logo) doc.addImage(logo.dataUrl,logo.fmt,L,28,90,54); };
+  const newPage = () => { doc.addPage(); header(); y = TOP; };
+  const font = (b,i) => doc.setFont('times', b&&i? 'bolditalic' : b? 'bold' : i? 'italic' : 'normal');
+  header(); doc.setFontSize(FS);
+  for(const m of model){
+    if(m.pageBreak && y>TOP) newPage();
+    const tokens = [];
+    m.runs.forEach(r => r.text.split(/(\n| )/).forEach(w => { if(w!=='') tokens.push({t:w,b:r.b,i:r.i}); }));
+    const x0 = L + (m.label? 36 + m.lvl*18 : 0), maxW = R - x0;
+    const lines = [[]]; let w = 0;
+    for(const k of tokens){
+      if(k.t==='\n'){ lines.push([]); w = 0; continue; }
+      font(k.b,k.i); const tw = doc.getTextWidth(k.t);
+      if(k.t===' ' && w===0) continue;
+      if(k.t!==' ' && w>0 && w+tw>maxW){ lines.push([]); w = 0; }
+      lines[lines.length-1].push({...k,tw}); w += tw;
+    }
+    if(tokens.length || !m.images.length){
+      lines.forEach((ln,li) => {
+        if(y+LH>BOT) newPage();
+        if(li===0 && m.label){ font(false,false); doc.text(m.label, x0-6, y+11, {align:'right'}); }
+        let x = x0; ln.forEach(k => { font(k.b,k.i); doc.text(k.t,x,y+11); x += k.tw; });
+        y += LH;
+      });
+      y += m.after;
+    }
+    for(const im of m.images){
+      const md = await mediaByRid(im.rid);
+      if(!md){ font(false,true); doc.setTextColor(120); doc.text('[Table image – shown in the Word version only]',L,y+11); doc.setTextColor(0); y += LH+8; continue; }
+      const wpt = Math.min(im.cx/12700, R-L), hpt = im.cy/12700*(wpt/(im.cx/12700));
+      if(y+hpt>BOT) newPage();
+      doc.addImage(md.dataUrl,md.fmt,L,y,wpt,hpt); y += hpt + 8;
+    }
+  }
+  doc.setProperties({title:'Proposal – '+(cdValues().company||'Client')});
+  return doc;
+}
+(function(){
+  const d = new Date(); $('cdDate').value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  let kecTouched = false;
+  $('cdKec').addEventListener('change',()=>{ kecTouched = true; });
+  const refresh = () => { if($('cdPreview').open) renderPreview().catch(e => cdMsg(e.message,'err')); };
+  const cdMsg = (m,c) => { const s = $('cdStatus'); s.className = 'msg '+c; s.textContent = m; };
+  $('clientDocCard').addEventListener('input',e => {
+    if(e.target.id==='cdCompany' && !kecTouched) $('cdKec').checked = /kiwetinohk|\bkec\b/i.test($('cdCompany').value);
+    refresh();
+  });
+  $('cdKec').addEventListener('change',refresh);
+  $('cdPreview').addEventListener('toggle',refresh);
+  const slug = t => (t||'Client').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'') || 'Client';
+  const fname = ext => `Raven_Proposal_${slug(cdValues().company)}_${$('cdDate').value}.${ext}`;
+  $('cdWord').onclick = async () => {
+    try{
+      const {dom} = await buildLetter(), t = await loadTemplate();
+      let xml = new XMLSerializer().serializeToString(dom);
+      if(!xml.startsWith('<?xml')) xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+xml;
+      t.zip.file('word/document.xml',xml);
+      const blob = await t.zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',compression:'DEFLATE'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fname('docx'); document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href),4000); cdMsg('Word document created.','info');
+    }catch(e){ cdMsg(e.message||String(e),'err'); }
+  };
+  $('cdPdf').onclick = async () => {
+    try{ (await buildPdf()).save(fname('pdf')); cdMsg('PDF created.','info'); }catch(e){ cdMsg(e.message||String(e),'err'); }
+  };
+})();
 </script>
 </body>
 </html>
