@@ -58,6 +58,15 @@
   #cdLetter p{margin:0} #cdLetter .li{display:flex;gap:8px} #cdLetter .lb{min-width:22px;text-align:right}
   #cdLetter img{max-width:100%;display:block;margin:6px 0}
   #cdLetter .note{color:var(--mute);font-style:italic;font-size:13px}
+  table.sa{max-width:620px;margin:0 auto}
+  table.sa td{border-bottom:none;padding:3px 6px;vertical-align:middle}
+  table.sa td:last-child{text-align:left}
+  table.sa tr.bar td{background:#f1f1f3;color:#2b6cc4;font-weight:700;font-size:16px;padding:6px 8px}
+  table.sa tr.cols td{font-weight:400;text-decoration:underline;text-align:center;padding-top:8px}
+  table.sa tr.cols td:first-child{text-decoration:none}
+  table.sa td.lbl{width:38%} table.sa td.val{width:31%}
+  table.sa input{text-align:center;padding:6px 8px}
+  table.sa tr.gap td{padding:6px}
   #map{height:380px;border-radius:8px;border:1px solid var(--line);margin-top:12px}
 </style>
 </head>
@@ -67,6 +76,42 @@
   <p>Sand + trucking + wait time, from pickup to wellsite</p>
 </header>
 <main>
+
+<section class="card" id="sandCard">
+  <h2>Sand Analysis</h2>
+  <div class="hint" style="margin:0 0 10px">Enter the lab specification and results. Reference only – nothing here feeds any other calculation or document.</div>
+  <div style="overflow-x:auto">
+  <table class="sa">
+    <tr class="bar"><td colspan="3">Turbidity Test</td></tr>
+    <tr class="cols"><td></td><td>Specification</td><td>Results</td></tr>
+    <tr><td class="lbl">Turbidity [NTU]:</td><td class="val" rowspan="1"><input type="text" value="≤250" placeholder=""></td><td class="val"><input type="text" value="9286" placeholder=""></td></tr>
+    <tr class="gap"><td colspan="3"></td></tr>
+    <tr class="bar"><td colspan="3">Roundness &amp; Sphericity</td></tr>
+    <tr class="cols"><td></td><td>Specification</td><td>Results</td></tr>
+    <tr><td class="lbl">Sphericity:</td><td class="val" rowspan="2"><input type="text" value="≥0.6" placeholder=""></td><td class="val"><input type="text" value="0.6" placeholder=""></td></tr>
+    <tr><td class="lbl">Roundness:</td><td class="val"><input type="text" value="0.6" placeholder=""></td></tr>
+    <tr><td colspan="3"><input type="text" value="No clusters observed" style="font-style:italic" placeholder="Notes"></td></tr>
+    <tr class="gap"><td colspan="3"></td></tr>
+    <tr class="bar"><td colspan="3">Bulk Density</td></tr>
+    <tr class="cols"><td></td><td>Specification</td><td>Results</td></tr>
+    <tr><td class="lbl">Bulk Density [g/cm³]:</td><td class="val" rowspan="2"><input type="text" value="N/A" placeholder=""></td><td class="val"><input type="text" value="1.15" placeholder=""></td></tr>
+    <tr><td class="lbl">Bulk Density [lb/ft³]:</td><td class="val"><input type="text" value="71.8" placeholder=""></td></tr>
+    <tr class="gap"><td colspan="3"></td></tr>
+    <tr class="bar"><td colspan="3">Apparent Density</td></tr>
+    <tr class="cols"><td></td><td>Specification</td><td>Results</td></tr>
+    <tr><td class="lbl">Appt Density [g/ml]:</td><td class="val" rowspan="1"><input type="text" value="N/A" placeholder=""></td><td class="val"><input type="text" value="2.54" placeholder=""></td></tr>
+    <tr class="gap"><td colspan="3"></td></tr>
+    <tr class="bar"><td colspan="3">Acid Solubility 12:3 HCl:HF</td></tr>
+    <tr class="cols"><td></td><td>Specification</td><td>Results</td></tr>
+    <tr><td class="lbl">Acid Solubility [%]:</td><td class="val" rowspan="1"><input type="text" value="≤ 3.0%" placeholder=""></td><td class="val"><input type="text" value="13.8" placeholder=""></td></tr>
+    <tr class="gap"><td colspan="3"></td></tr>
+    <tr class="bar"><td colspan="3">Crush Resistance</td></tr>
+    <tr class="cols"><td>K-Value</td><td>Specification</td><td>% Fines</td></tr>
+    <tr><td class="lbl">2K</td><td class="val" rowspan="2"><input type="text" value="≤10.0%" placeholder=""></td><td class="val"><input type="text" value="9.0" placeholder=""></td></tr>
+    <tr><td class="lbl">3K</td><td class="val"><input type="text" value="12.3" placeholder=""></td></tr>
+  </table>
+  </div>
+</section>
 
 <section class="card" id="inputsCard">
   <h2>Inputs</h2>
