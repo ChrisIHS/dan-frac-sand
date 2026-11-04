@@ -98,6 +98,17 @@
   <div class="hint">Crane and picker for mob/demob, and fuel, are supplied by the customer/producer. RSS &amp; FSC to be determined the week of mobilization.</div>
 </section>
 
+<section class="card" id="fscCard">
+  <h2>Fuel Surcharge Calculation</h2>
+  <div class="hint" style="margin:0 0 10px">(Previous Month's Average Price − Base Price) × Opex Multiplier = % FSC for the current month. Reference only – not used in any other calculation.</div>
+  <div class="grid">
+    <div><label for="fscPrev">Previous month's average fuel price <small>($ / L)</small></label><input id="fscPrev" type="number" min="0" step="any" placeholder="e.g. 1.15"></div>
+    <div><label for="fscBase">Base price <small>($ / L, fixed)</small></label><input id="fscBase" type="number" min="0" step="any" value="0.90"></div>
+    <div><label for="fscOpex">Opex multiplier <small>(%)</small></label><input id="fscOpex" type="number" min="0" step="any" value="24"></div>
+  </div>
+  <table class="rev" id="fscOut" style="margin-top:12px"></table>
+</section>
+
 <section class="card">
   <h2>1 · Route</h2>
   <div class="grid">
@@ -196,6 +207,21 @@ function updInputs(){
     r(`Sub crew day rate = ${q.persons} persons × ${money(q.subsRate)}`, money(q.crewDayRate)+' / day');
 }
 document.getElementById('inputsCard').addEventListener('input', updInputs);
+
+/* ---------- Fuel Surcharge Calculation (reference only; not used by any other calculation) ---------- */
+function updFsc(){
+  const raw = $('fscPrev').value.trim(), prev = num('fscPrev'), base = num('fscBase'), opex = num('fscOpex');
+  const row = (a,b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
+  const perL = v => (v<0?'-':'') + '$' + Math.abs(v).toFixed(4) + '/L';
+  if(!raw){ $('fscOut').innerHTML = row("Enter the previous month's average fuel price",'—'); return; }
+  const diff = prev - base, fsc = diff*opex;               // e.g. ($1.15 - $0.90) x 24% = 6.00%
+  $('fscOut').innerHTML =
+    row("Previous month's average price − base price", `${perL(prev)} − ${perL(base)} = ${perL(diff)}`) +
+    row(`× Opex multiplier`, `${opex}%`) +
+    `<tr class="total"><td>% FSC for the current month</td><td>${fsc.toFixed(2)}%</td></tr>`;
+}
+document.getElementById('fscCard').addEventListener('input', updFsc);
+updFsc();
 updInputs();
 
 /* ---------- persisted settings ---------- */
