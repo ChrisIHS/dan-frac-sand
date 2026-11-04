@@ -46,6 +46,12 @@
   #dirList .n{color:var(--mute);min-width:28px;text-align:right}
   #dirList .t{flex:1}
   #dirList .d{color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums}
+  table.qt{min-width:760px} table.qt th{text-align:left;font-size:12px;color:var(--mute);padding:6px 4px;border-bottom:2px solid var(--line)}
+  table.qt th:last-child{text-align:right}
+  table.qt td{vertical-align:middle} table.qt td input{padding:6px 8px;min-width:90px}
+  table.qt tr.sec td{background:var(--bg);font-weight:600;color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  table.qt small{color:var(--mute)}
+  table.rev td{font-size:13px} table.rev td:first-child{color:var(--mute)}
   #map{height:380px;border-radius:8px;border:1px solid var(--line);margin-top:12px}
 </style>
 </head>
@@ -55,6 +61,42 @@
   <p>Sand + trucking + wait time, from pickup to wellsite</p>
 </header>
 <main>
+
+<section class="card" id="inputsCard">
+  <h2>Inputs</h2>
+  <div class="hint" style="margin:0 0 10px"><b>Raven Silica Solutions – Kiwetinohk 27 Tonne (T) Project, Q1-2025.</b> Every value is editable and feeds the calculation below. Add-on quantities default to 0 and are only used when above 0.</div>
+  <div style="overflow-x:auto">
+  <table class="qt">
+    <thead><tr><th style="width:40%">Item</th><th>Price</th><th>Timeframe / units</th><th>Qty</th><th>Subtotal</th></tr></thead>
+    <tbody>
+      <tr class="sec"><td colspan="5">Annual package</td></tr>
+      <tr><td>Sand plant / package for the entire year<br><small>1,600 T on-site sand plant (8 bins), mob/demob (excl. crane &amp; picker), all transportation, 24 h sand management (2–3 people/shift minimum)</small></td>
+        <td><input id="pkgMonthly" type="number" min="0" step="any" value="300000"></td><td>per month</td><td><input id="pkgMonths" type="number" min="0" step="any" value="12"></td><td id="pkgSub"></td></tr>
+      <tr><td>Pads in 2025 <small>(days on site matter, not number of wells)</small></td><td></td><td>pads</td><td><input id="pads" type="number" min="0" step="any" value="8"></td><td></td></tr>
+      <tr><td>Sand managed in 2025</td><td></td><td>tonnes</td><td><input id="annualT" type="number" min="0" step="any" value="200000"></td><td></td></tr>
+      <tr><td>Sand and trucking, grouped<br><small>Peaskie sand from Opal, Alberta, Raven to provide (Domestic 40/70)</small></td>
+        <td><input id="quotedSand" type="number" min="0" step="any" value="90"></td><td>per tonne</td><td id="sandQty" style="text-align:right"></td><td id="sandSub"></td></tr>
+      <tr class="sec"><td colspan="5">Beyond the package</td></tr>
+      <tr><td>Sand plant / package beyond # of allocated days per year<br><small>Time meter starts and ends on the day the crane (140–200T) is setting or taking down; 45T picker for support and tailing</small></td>
+        <td><input id="extraRate" type="number" min="0" step="any" value="11750"></td><td>day</td><td><input id="extraDays" type="number" min="0" step="any" value="0"></td><td id="extraSub"></td></tr>
+      <tr><td>Sub crew size <small>(subsistence, camp or hotel; if not provided by customer)</small></td><td></td><td>persons</td><td><input id="persons" type="number" min="0" step="any" value="6"></td><td id="crewDayCell"></td></tr>
+      <tr><td>Sub (subsistence) per person <small>(negotiated case by case)</small></td>
+        <td><input id="subsRate" type="number" min="0" step="any" value="275"></td><td>per person per day</td><td><input id="crewDays" type="number" min="0" step="any" value="0"></td><td id="crewSub"></td></tr>
+      <tr><td>Sand haul stand-by above free hours per load<br><small>Billed on pick-up + delivery wait hours per load (set in Rates &amp; quantities)</small></td>
+        <td><input id="waitRate" type="number" min="0" step="any" value="150"></td><td>per hour; free hours per load →</td><td><input id="freeWaitH" type="number" min="0" step="any" value="1"></td><td><small>see Result</small></td></tr>
+      <tr><td>Sand haul chain-up charge</td>
+        <td><input id="chainRate" type="number" min="0" step="any" value="130"></td><td>per occurrence</td><td><input id="chainQty" type="number" min="0" step="any" value="0"></td><td id="chainSub"></td></tr>
+      <tr><td>Fuel surcharge (sand haul only) <small>– TBD; 0 = none</small></td>
+        <td><input id="fsc" type="number" min="0" step="any" value="0"></td><td>% of transportation</td><td></td><td><small>see Result</small></td></tr>
+      <tr><td>Each move (mob and demob), e.g. storing the plant/rack in the area</td>
+        <td><input id="mobRate" type="number" min="0" step="any" value="20000"></td><td>per move</td><td><input id="mobMoves" type="number" min="0" step="any" value="0"></td><td id="mobSub"></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h2 style="margin:16px 0 6px">Reverse-engineered from the quote</h2>
+  <table class="rev" id="revTable"></table>
+  <div class="hint">Crane and picker for mob/demob, and fuel, are supplied by the customer/producer. RSS &amp; FSC to be determined the week of mobilization.</div>
+</section>
 
 <section class="card">
   <h2>1 · Route</h2>
@@ -90,15 +132,14 @@
 
 <section class="card">
   <h2>2 · Rates &amp; quantities</h2>
+  <div class="hint" style="margin:0 0 10px">Stand-by rate and free hours, fuel surcharge, chain-up and plant add-ons come from <b>Inputs</b> above.</div>
   <div class="grid">
     <div><label for="tonnes">Tonnes of sand</label><input id="tonnes" type="number" min="0" step="any" value="40"></div>
     <div><label for="sandPrice">Frac sand cost <small>($ / tonne)</small></label><input id="sandPrice" type="number" min="0" step="any" value="0"></div>
     <div><label for="loadSize">Tonnes per truck load</label><input id="loadSize" type="number" min="1" step="any" value="40"></div>
     <div><label for="hrRate">Transportation <small>($ / hour, truck driving time)</small></label><input id="hrRate" type="number" min="0" step="any" value="0"></div>
-    <div><label for="waitRate">Wait time cost <small>($ / hour)</small></label><input id="waitRate" type="number" min="0" step="any" value="0"></div>
     <div><label for="pickupH">Pick-up wait <small>(hours / load)</small></label><input id="pickupH" type="number" min="0" step="any" value="0"></div>
     <div><label for="deliveryH">Delivery wait <small>(hours / load)</small></label><input id="deliveryH" type="number" min="0" step="any" value="0"></div>
-    <div><label for="fsc">Fuel surcharge <small>(% of transportation, 0 = none)</small></label><input id="fsc" type="number" min="0" step="any" value="0"></div>
     <div style="align-self:end"><label class="check"><input id="roundTrip" type="checkbox"> Bill return trip (distance × 2)</label></div>
   </div>
   <div class="row" style="margin-top:16px">
@@ -120,9 +161,42 @@
 </main>
 <script>
 const $ = id => document.getElementById(id);
-const money = n => '$' + n.toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const money = n => (n<0?'-':'') + '$' + Math.abs(n).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
 const num = id => Math.max(0, parseFloat($(id).value) || 0);
 let last = null;
+
+/* ---------- Inputs (Raven Silica Solutions quote) ---------- */
+const QUOTE_IDS = ['pkgMonthly','pkgMonths','pads','annualT','quotedSand','extraRate','extraDays','persons','subsRate','crewDays','freeWaitH','waitRate','chainRate','chainQty','fsc','mobRate','mobMoves'];
+function quote(){
+  const q = {}; QUOTE_IDS.forEach(k => q[k] = num(k));
+  q.pkg = q.pkgMonthly*q.pkgMonths;                       // $300,000 x 12 = $3,600,000
+  q.pkgPerT = q.annualT? q.pkg/q.annualT : 0;             // implied plant & management fee per tonne
+  q.pkgPerPad = q.pads? q.pkg/q.pads : 0;
+  q.sandContract = q.quotedSand*q.annualT;
+  q.contract = q.pkg + q.sandContract;
+  q.allInPerT = q.annualT? q.contract/q.annualT : 0;
+  q.crewDayRate = q.persons*q.subsRate;                   // 6 x $275 = $1,650/day (the "Sub" line)
+  q.extra = q.extraDays*q.extraRate; q.crew = q.crewDayRate*q.crewDays;
+  q.chain = q.chainQty*q.chainRate;  q.mob = q.mobMoves*q.mobRate;
+  return q;
+}
+function updInputs(){
+  const q = quote(), set = (id,t) => { $(id).textContent = t; };
+  set('pkgSub', money(q.pkg)); set('sandQty', q.annualT.toLocaleString()); set('sandSub', money(q.sandContract));
+  set('extraSub', money(q.extra)); set('crewDayCell', money(q.crewDayRate)+' / day'); set('crewSub', money(q.crew));
+  set('chainSub', money(q.chain)); set('mobSub', money(q.mob));
+  const r = (a,b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
+  $('revTable').innerHTML =
+    r(`Annual package = ${money(q.pkgMonthly)} × ${q.pkgMonths} months`, money(q.pkg)) +
+    r(`Implied plant &amp; sand-management fee = package ÷ ${q.annualT.toLocaleString()} t`, money(q.pkgPerT)+' / t') +
+    r(`Implied package per pad (${q.pads} pads)`, money(q.pkgPerPad)+' / pad') +
+    r(`Sand + trucking contract = ${money(q.quotedSand)} × ${q.annualT.toLocaleString()} t`, money(q.sandContract)) +
+    r('Contract total (package + sand &amp; trucking)', money(q.contract)) +
+    r('All-in cost per tonne (plant fee + sand &amp; trucking)', money(q.allInPerT)+' / t') +
+    r(`Sub crew day rate = ${q.persons} persons × ${money(q.subsRate)}`, money(q.crewDayRate)+' / day');
+}
+document.getElementById('inputsCard').addEventListener('input', updInputs);
+updInputs();
 
 /* ---------- persisted settings ---------- */
 const store = {
@@ -288,16 +362,23 @@ $('calc').onclick = async () => {
       date:new Date(), provider:provNames[provider], a, b,
       km:rt.km, hours:rt.hours, path:rt.path, steps:(rt.steps||[]).filter(t=>t.text),
       tonnes:num('tonnes'), sandPrice:num('sandPrice'), loadSize:Math.max(num('loadSize'),0.0001),
-      hrRate:num('hrRate'), fsc:num('fsc'), waitRate:num('waitRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
+      hrRate:num('hrRate'), pickupH:num('pickupH'), deliveryH:num('deliveryH'),
       mult:$('roundTrip').checked?2:1
     };
+    const q = quote(); d.q = q; d.fsc = q.fsc; d.waitRate = q.waitRate; d.freeH = q.freeWaitH;
     d.loads = Math.max(1,Math.ceil(d.tonnes/d.loadSize - 1e-9));
     d.billKm = d.km*d.mult*d.loads;
     d.billHrs = d.hours*d.mult*d.loads;
     d.waitHrs = (d.pickupH+d.deliveryH)*d.loads;
-    d.sand = d.tonnes*d.sandPrice; d.trans = d.billHrs*d.hrRate; d.wait = d.waitHrs*d.waitRate;
+    d.billWaitHrs = Math.max(0, d.pickupH+d.deliveryH-d.freeH)*d.loads;   // stand-by only above the free hours per load
+    d.sand = d.tonnes*d.sandPrice; d.trans = d.billHrs*d.hrRate; d.wait = d.billWaitHrs*d.waitRate;
     d.fuel = d.fsc>0 ? d.trans*d.fsc/100 : 0;
-    d.total = d.sand+d.trans+d.fuel+d.wait;
+    d.chain = q.chain; d.extra = q.extra; d.crew = q.crew; d.mob = q.mob;
+    d.addons = d.extra+d.crew+d.mob;
+    d.total = d.sand+d.trans+d.fuel+d.wait+d.chain+d.addons;
+    d.skPerT = d.tonnes? (d.sand+d.trans+d.fuel+d.wait+d.chain)/d.tonnes : 0;   // comparable to the quoted sand + trucking $/t
+    d.quoted = q.quotedSand; d.diff = d.quoted - d.skPerT;
+    d.chainPerT = d.tonnes? d.chain/d.tonnes : 0; d.addonsPerT = d.tonnes? d.addons/d.tonnes : 0;
     d.perKm = d.billKm? (d.trans+d.fuel)/d.billKm : 0; d.fuelPerT = d.tonnes? d.fuel/d.tonnes : 0; d.transPerT = d.tonnes? d.trans/d.tonnes : 0; d.waitPerT = d.tonnes? d.wait/d.tonnes : 0; d.sandPerT = d.sandPrice; d.perT = d.tonnes? d.total/d.tonnes : 0;
     last = d; render(d);
     $('status').className='msg'; $('xlsx').disabled=$('pdf').disabled=false;
@@ -337,14 +418,25 @@ function render(d){
     r(`Frac sand – ${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}/t`, money(d.sand)) +
     r(`Transportation – ${d.billHrs.toFixed(2)} drive h × ${money(d.hrRate)}/h`, money(d.trans)) +
     (d.fsc>0? r(`Fuel surcharge – ${d.fsc}% of transportation`, money(d.fuel)) : '') +
-    r(`Wait time – ${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}/h`, money(d.wait)) +
+    r(`Stand-by – ${d.billWaitHrs.toFixed(2)} billable h (after ${d.freeH} free h/load) × ${money(d.waitRate)}/h`, money(d.wait)) +
+    (d.chain>0? r(`Chain-up – ${d.q.chainQty} × ${money(d.q.chainRate)}`, money(d.chain)) : '') +
+    (d.extra>0? r(`Plant days beyond allocation – ${d.q.extraDays} d × ${money(d.q.extraRate)}`, money(d.extra)) : '') +
+    (d.crew>0? r(`Sub crew – ${d.q.persons} persons × ${money(d.q.subsRate)} × ${d.q.crewDays} d`, money(d.crew)) : '') +
+    (d.mob>0? r(`Mob/demob – ${d.q.mobMoves} move(s) × ${money(d.q.mobRate)}`, money(d.mob)) : '') +
     r('Total delivered cost', money(d.total),'total') +
     r('Delivered cost per tonne', money(d.perT),'sub') +
     r(`&nbsp;&nbsp;Sand per tonne`, money(d.sandPerT),'sub') +
     r(`&nbsp;&nbsp;Transportation per tonne`, money(d.transPerT),'sub') +
     (d.fsc>0? r(`&nbsp;&nbsp;Fuel surcharge per tonne`, money(d.fuelPerT),'sub') : '') +
-    r(`&nbsp;&nbsp;Wait time per tonne`, money(d.waitPerT),'sub') +
+    r(`&nbsp;&nbsp;Stand-by per tonne`, money(d.waitPerT),'sub') +
+    (d.chain>0? r(`&nbsp;&nbsp;Chain-up per tonne`, money(d.chainPerT),'sub') : '') +
+    (d.addons>0? r(`&nbsp;&nbsp;Plant add-ons per tonne`, money(d.addonsPerT),'sub') : '') +
     r(`Effective transportation cost per km${d.fsc>0?' incl. fuel surcharge':''} (${d.billKm.toFixed(1)} billable km)`, money(d.perKm)+' / km','sub') +
+    (d.quoted>0 && d.tonnes>0 ?
+      r('Quoted sand + trucking (Raven)', money(d.quoted)+' / t','sub') +
+      r('Calculated sand + trucking (sand, transport, fuel, stand-by, chain-up)', money(d.skPerT)+' / t','sub') +
+      r('Difference (quoted − calculated)', money(d.diff)+' / t','sub') : '') +
+    r(`Package reference: ${money(d.q.pkg)}/yr = ${money(d.q.pkgPerT)}/t over ${d.q.annualT.toLocaleString()} t; all-in ${money(d.q.allInPerT)}/t`, '','sub') +
     r(`Loads: ${d.loads} (${d.loadSize} t/load)${d.mult===2?' · return trip billed':''}`, '','sub');
 }
 
@@ -352,70 +444,76 @@ function render(d){
 const stamp = d => d.date.toISOString().slice(0,10);
 $('xlsx').onclick = () => {
   const d = last; if(!d) return;
-  const rows = [
-    ['Dans Frac Sand – Delivered Cost Quote'],
-    ['Date', stamp(d)],
-    [],
-    ['ROUTE'],
-    ['Start', d.a.label],
-    ['Start coordinates', d.a.lat.toFixed(5)+', '+d.a.lon.toFixed(5)],
-    ['Destination', d.b.label],
-    ['Destination coordinates', d.b.lat.toFixed(5)+', '+d.b.lon.toFixed(5)],
-    ['Distance source', d.provider],
-    ['One-way driving distance (km)', +d.km.toFixed(2)],
-    ['Drive time one-way (h)', +d.hours.toFixed(2)],
-    [],
-    ['INPUTS'],
-    ['Tonnes of sand', d.tonnes],
-    ['Sand cost ($/tonne)', d.sandPrice],
-    ['Tonnes per load', d.loadSize],
-    ['Transportation ($/hour of driving)', d.hrRate],
-    ['Distance multiplier (1 = one-way, 2 = return billed)', d.mult],
-    ['Pick-up wait (h/load)', d.pickupH],
-    ['Delivery wait (h/load)', d.deliveryH],
-    ['Wait time cost ($/h)', d.waitRate],
-    ['Fuel surcharge (% of transportation, 0 = none)', d.fsc],
-    [],
-    ['CALCULATIONS'],
-    ['Number of loads', d.loads],
-    ['Billable km', d.billKm],
-    ['Billable driving hours', d.billHrs],
-    ['Total wait hours', d.waitHrs],
-    [],
-    ['COSTS'],
-    ['Frac sand', d.sand],
-    ['Transportation', d.trans],
-    ['Fuel surcharge', d.fuel],
-    ['Wait time', d.wait],
-    ['TOTAL DELIVERED COST', d.total],
-    ['Delivered cost per tonne', d.perT],
-    ['  Sand per tonne', d.sandPerT],
-    ['  Transportation per tonne', d.transPerT],
-    ['  Fuel surcharge per tonne', d.fuelPerT],
-    ['  Wait time per tonne', d.waitPerT],
-    ['Effective transportation cost incl. fuel surcharge ($/km)', d.perKm]
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const f = (cell, formula, v) => { ws[cell] = {t:'n', v, f:formula}; };
-  f('B25','ROUNDUP(B14/B16,0)',d.loads);
-  f('B26','B10*B18*B25',d.billKm);
-  f('B27','B11*B18*B25',d.billHrs);
-  f('B28','(B19+B20)*B25',d.waitHrs);
-  f('B31','B14*B15',d.sand);
-  f('B32','B27*B17',d.trans);
-  f('B33','IF(B22>0,B32*B22/100,0)',d.fuel);
-  f('B34','B28*B21',d.wait);
-  f('B35','SUM(B31:B34)',d.total);
-  f('B36','IF(B14=0,0,B35/B14)',d.perT);
-  f('B37','B15',d.sandPerT);
-  f('B38','IF(B14=0,0,B32/B14)',d.transPerT);
-  f('B39','IF(B14=0,0,B33/B14)',d.fuelPerT);
-  f('B40','IF(B14=0,0,B34/B14)',d.waitPerT);
-  f('B41','IF(B26=0,0,(B32+B33)/B26)',d.perKm);
-  ws['!cols'] = [{wch:56},{wch:60}];
-  const money$ = '"$"#,##0.00';
-  [15,17,21,31,32,33,34,35,36,37,38,39,40,41].forEach(r => { if(ws['B'+r]) ws['B'+r].z = money$; });
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Quote');
+  const q = d.q, usd = '"$"#,##0.00';
+  const R = [];
+  const T = (l,v) => R.push({l,v});                           // plain text / constant row
+  const C = (k,l,v,f,z) => R.push({k,l,v,f,z});              // keyed row; f = formula using {key} references
+  const H = t => R.push({h:t}), B = () => R.push({});
+  T('Dans Frac Sand – Delivered Cost Quote'); T('Date',stamp(d)); B();
+  H('ROUTE');
+  T('Start',d.a.label); T('Start coordinates',d.a.lat.toFixed(5)+', '+d.a.lon.toFixed(5));
+  T('Destination',d.b.label); T('Destination coordinates',d.b.lat.toFixed(5)+', '+d.b.lon.toFixed(5));
+  T('Distance source',d.provider);
+  C('km','One-way driving distance (km)',+d.km.toFixed(2)); C('hrs','Drive time one-way (h)',+d.hours.toFixed(2)); B();
+  H('JOB INPUTS');
+  C('tonnes','Tonnes of sand',d.tonnes); C('sandPrice','Sand cost ($/tonne)',d.sandPrice,null,usd);
+  C('loadSize','Tonnes per load',d.loadSize); C('hrRate','Transportation ($/hour of driving)',d.hrRate,null,usd);
+  C('mult','Distance multiplier (1 = one-way, 2 = return billed)',d.mult);
+  C('pickupH','Pick-up wait (h/load)',d.pickupH); C('deliveryH','Delivery wait (h/load)',d.deliveryH); B();
+  H('QUOTE INPUTS (Raven Silica Solutions – Kiwetinohk 27 T Project)');
+  C('waitRate','Stand-by ($/hour above free hours)',q.waitRate,null,usd); C('freeH','Free stand-by hours per load',q.freeWaitH);
+  C('fsc','Fuel surcharge (% of transportation, 0 = none)',q.fsc,null,'0.00"%"');
+  C('chainRate','Chain-up ($/occurrence)',q.chainRate,null,usd); C('chainQty','Chain-up occurrences',q.chainQty);
+  C('extraRate','Plant beyond allocated days ($/day)',q.extraRate,null,usd); C('extraDays','Plant days beyond allocation',q.extraDays);
+  C('persons','Sub crew size (persons)',q.persons); C('subsRate','Sub ($/person/day)',q.subsRate,null,usd); C('crewDays','Sub crew days',q.crewDays);
+  C('mobRate','Mob/demob ($/move)',q.mobRate,null,usd); C('mobMoves','Mob/demob moves',q.mobMoves);
+  C('pkgMonthly','Annual package ($/month)',q.pkgMonthly,null,usd); C('pkgMonths','Package months',q.pkgMonths);
+  C('pads','Pads in year',q.pads); C('annualT','Tonnes managed in year',q.annualT);
+  C('quotedSand','Quoted sand + trucking ($/tonne)',q.quotedSand,null,usd); B();
+  H('CALCULATIONS');
+  C('loads','Number of loads',d.loads,'ROUNDUP({tonnes}/{loadSize},0)');
+  C('billKm','Billable km',d.billKm,'{km}*{mult}*{loads}');
+  C('billHrs','Billable driving hours',d.billHrs,'{hrs}*{mult}*{loads}');
+  C('waitHrs','Total wait hours',d.waitHrs,'({pickupH}+{deliveryH})*{loads}');
+  C('billWait','Billable stand-by hours (above free hours per load)',d.billWaitHrs,'MAX(0,{pickupH}+{deliveryH}-{freeH})*{loads}'); B();
+  H('COSTS');
+  C('sand','Frac sand',d.sand,'{tonnes}*{sandPrice}',usd);
+  C('trans','Transportation',d.trans,'{billHrs}*{hrRate}',usd);
+  C('fuel','Fuel surcharge',d.fuel,'IF({fsc}>0,{trans}*{fsc}/100,0)',usd);
+  C('wait','Stand-by',d.wait,'{billWait}*{waitRate}',usd);
+  C('chain','Chain-up',d.chain,'{chainQty}*{chainRate}',usd);
+  C('extra','Plant days beyond allocation',d.extra,'{extraDays}*{extraRate}',usd);
+  C('crew','Sub crew',d.crew,'{persons}*{subsRate}*{crewDays}',usd);
+  C('mob','Mob/demob',d.mob,'{mobMoves}*{mobRate}',usd);
+  C('total','TOTAL DELIVERED COST',d.total,'SUM({sand}:{mob})',usd);
+  C('perT','Delivered cost per tonne',d.perT,'IF({tonnes}=0,0,{total}/{tonnes})',usd);
+  C('sandPerT','  Sand per tonne',d.sandPerT,'{sandPrice}',usd);
+  C('transPerT','  Transportation per tonne',d.transPerT,'IF({tonnes}=0,0,{trans}/{tonnes})',usd);
+  C('fuelPerT','  Fuel surcharge per tonne',d.fuelPerT,'IF({tonnes}=0,0,{fuel}/{tonnes})',usd);
+  C('waitPerT','  Stand-by per tonne',d.waitPerT,'IF({tonnes}=0,0,{wait}/{tonnes})',usd);
+  C('chainPerT','  Chain-up per tonne',d.chainPerT,'IF({tonnes}=0,0,{chain}/{tonnes})',usd);
+  C('addonsPerT','  Plant add-ons per tonne',d.addonsPerT,'IF({tonnes}=0,0,({extra}+{crew}+{mob})/{tonnes})',usd);
+  C('perKm','Effective transportation cost incl. fuel surcharge ($/km)',d.perKm,'IF({billKm}=0,0,({trans}+{fuel})/{billKm})',usd); B();
+  H('QUOTED vs CALCULATED SAND + TRUCKING');
+  C('skPerT','Calculated sand + trucking ($/t: sand, transport, fuel, stand-by, chain-up)',d.skPerT,'IF({tonnes}=0,0,({sand}+{trans}+{fuel}+{wait}+{chain})/{tonnes})',usd);
+  C('quoted','Quoted sand + trucking ($/t)',d.quoted,'{quotedSand}',usd);
+  C('diff','Difference (quoted - calculated, $/t)',d.diff,'{quoted}-{skPerT}',usd); B();
+  H('PROJECT PACKAGE (reverse-engineered from the quote)');
+  C('pkg','Annual package',q.pkg,'{pkgMonthly}*{pkgMonths}',usd);
+  C('pkgPerT','Implied plant & sand-management fee ($/tonne)',q.pkgPerT,'IF({annualT}=0,0,{pkg}/{annualT})',usd);
+  C('pkgPerPad','Implied package per pad',q.pkgPerPad,'IF({pads}=0,0,{pkg}/{pads})',usd);
+  C('sandContract','Sand + trucking contract (quoted $/t x tonnes)',q.sandContract,'{quotedSand}*{annualT}',usd);
+  C('contract','Contract total',q.contract,'{pkg}+{sandContract}',usd);
+  C('allIn','All-in cost per tonne',q.allInPerT,'IF({annualT}=0,0,{contract}/{annualT})',usd);
+  C('crewDay','Sub crew day rate (persons x $/person)',q.crewDayRate,'{persons}*{subsRate}',usd);
+  const rowOf = {}; R.forEach((r,i) => { if(r.k) rowOf[r.k] = i+1; });
+  const F = f => f.replace(/\{(\w+)\}/g,(m,k) => { if(!rowOf[k]) throw new Error('Excel key '+k); return 'B'+rowOf[k]; });
+  const ws = XLSX.utils.aoa_to_sheet(R.map(r => r.h? [r.h] : r.l!==undefined? [r.l,r.v] : []));
+  R.forEach((r,i) => { if(!r.k) return; const a='B'+(i+1);
+    if(r.f) ws[a] = {t:'n',v:r.v,f:F(r.f)};
+    if(r.z) ws[a].z = r.z; });
+  ws['!cols'] = [{wch:62},{wch:60}];
+  const wb = XLSX.utils.book_new(); wb.Workbook = {CalcPr:{fullCalcOnLoad:true}}; XLSX.utils.book_append_sheet(wb,ws,'Quote');
   if(d.steps.length){
     const rs = XLSX.utils.aoa_to_sheet([['Step','Instruction','Distance (km)'],...d.steps.map((t,i)=>[i+1,t.text,+t.km.toFixed(2)])]);
     rs['!cols']=[{wch:6},{wch:80},{wch:14}]; XLSX.utils.book_append_sheet(wb,rs,'Driving route');
@@ -439,19 +537,34 @@ $('pdf').onclick = () => {
     ['Tonnes per load / loads',d.loadSize+' t  /  '+d.loads],
     ['Transportation',money(d.hrRate)+' / driving hour'+(d.mult===2?' (return trip billed)':'')],
     ['Pick-up wait',d.pickupH+' h / load'],['Delivery wait',d.deliveryH+' h / load'],
-    ['Wait time cost',money(d.waitRate)+' / h'],
+    ['Stand-by',money(d.waitRate)+' / h above '+d.freeH+' free h per load'],
     ['Fuel surcharge',d.fsc>0? d.fsc+'% of transportation' : 'None']
   ],columnStyles:{0:{cellWidth:55,fontStyle:'bold'}}});
   doc.autoTable({startY:doc.lastAutoTable.finalY+8,theme:'grid',headStyles:{fillColor:[194,65,12]},head:[['Costs','','Amount']],body:[
     ['Frac sand',`${d.tonnes.toLocaleString()} t × ${money(d.sandPrice)}`,money(d.sand)],
     ['Transportation',`${d.billHrs.toFixed(2)} h × ${money(d.hrRate)}`,money(d.trans)],
     ...(d.fsc>0? [['Fuel surcharge',`${d.fsc}% × ${money(d.trans)}`,money(d.fuel)]] : []),
-    ['Wait time',`${d.waitHrs.toFixed(2)} h × ${money(d.waitRate)}`,money(d.wait)],
+    ['Stand-by',`${d.billWaitHrs.toFixed(2)} h × ${money(d.waitRate)}`,money(d.wait)],
+    ...(d.chain>0? [['Chain-up',`${d.q.chainQty} × ${money(d.q.chainRate)}`,money(d.chain)]] : []),
+    ...(d.extra>0? [['Plant days beyond allocation',`${d.q.extraDays} d × ${money(d.q.extraRate)}`,money(d.extra)]] : []),
+    ...(d.crew>0? [['Sub crew',`${d.q.persons} × ${money(d.q.subsRate)} × ${d.q.crewDays} d`,money(d.crew)]] : []),
+    ...(d.mob>0? [['Mob/demob',`${d.q.mobMoves} × ${money(d.q.mobRate)}`,money(d.mob)]] : []),
     [{content:'TOTAL DELIVERED COST',colSpan:2,styles:{fontStyle:'bold'}},{content:money(d.total),styles:{fontStyle:'bold'}}],
     [{content:'Delivered cost per tonne',colSpan:2},money(d.perT)],
     [{content:'   Sand / transportation / wait per tonne',colSpan:2},d.fsc>0? `${money(d.sandPerT)} / ${money(d.transPerT)} / ${money(d.fuelPerT)} fuel / ${money(d.waitPerT)}` : `${money(d.sandPerT)} / ${money(d.transPerT)} / ${money(d.waitPerT)}`],
     [{content:`Effective transportation cost per km${d.fsc>0?' incl. fuel surcharge':''} (${d.billKm.toFixed(1)} billable km)`,colSpan:2},money(d.perKm)+' / km']
   ],columnStyles:{2:{halign:'right'}}});
+  const q = d.q;
+  doc.autoTable({startY:doc.lastAutoTable.finalY+8,theme:'grid',headStyles:{fillColor:[28,36,48]},head:[['Quote reference – Raven Silica Solutions, Kiwetinohk 27 T Project','']],body:[
+    ...(d.quoted>0 && d.tonnes>0? [
+      ['Quoted sand + trucking',money(d.quoted)+' / t'],
+      ['Calculated sand + trucking',money(d.skPerT)+' / t'],
+      ['Difference (quoted − calculated)',money(d.diff)+' / t']] : []),
+    ['Annual package',`${money(q.pkgMonthly)} × ${q.pkgMonths} months = ${money(q.pkg)}`],
+    ['Implied plant fee',`${money(q.pkgPerT)} / t over ${q.annualT.toLocaleString()} t (${money(q.pkgPerPad)} per pad, ${q.pads} pads)`],
+    ['Contract total',`${money(q.contract)} (all-in ${money(q.allInPerT)} / t)`],
+    ['Sub crew day rate',`${q.persons} × ${money(q.subsRate)} = ${money(q.crewDayRate)} / day`]
+  ],columnStyles:{0:{cellWidth:70,fontStyle:'bold'}}});
   if(d.a.kind.includes('approx')||d.b.kind.includes('approx')){
     doc.setFontSize(9); doc.setTextColor(120);
     doc.text('Note: UWI location is approximated from the land survey grid (about 1–3 km).',14,doc.lastAutoTable.finalY+8);
